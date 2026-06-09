@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
+spoor = "spoor_sift.cli:main"
 spoor-sift = "spoor_sift.server:main"
 
 [dependency-groups]
