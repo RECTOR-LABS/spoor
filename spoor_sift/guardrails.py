@@ -1,0 +1,75 @@
+"""Architectural guardrails: a filesystem path-jail and a binary allow-list.
+
+These constraints are enforced in code, server-side — not in a model prompt — so
+they hold even against a fully jailbroken agent. Two properties:
+
+* **Path-jail**: every evidence path is resolved (symlinks included) and must lie
+  within the evidence root; traversal, absolute escapes, and symlink escapes are
+  rejected.
+* **Allow-list**: only a fixed set of forensic binaries may ever be spawned, so an
+  arbitrary shell command is impossible by construction.
+"""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+from typing import Callable
+
+
+class PathJailError(ValueError):
+    """Raised when a path resolves outside the evidence root."""
+
+
+class BinaryNotAllowedError(ValueError):
+    """Raised when a binary is not on the allow-list (or cannot be found)."""
+
+
+# Only these executables may be spawned. Curated to the memory -> timeline ->
+# disk -> registry -> IOC spine; anything else is rejected before exec.
+ALLOWED_BINARIES = frozenset(
+    {
+        "vol",              # Volatility 3 (memory forensics)
+        "log2timeline.py",  # plaso: build a super-timeline
+        "psort.py",         # plaso: filter/slice a .plaso store
+        "fls",              # Sleuth Kit: list files/inodes
+        "icat",             # Sleuth Kit: extract a file by inode
+        "rip.pl",           # RegRipper: registry hive plugins
+        "yara",             # YARA: signature scan
+    }
+)
+
+
+def resolve_in_root(root: Path | str, candidate: str | Path) -> Path:
+    """Resolve ``candidate`` and assert it lives within ``root``.
+
+    Symlinks are resolved before the containment check, so a symlink inside the
+    root that points outside is rejected. Returns the fully-resolved path.
+    """
+    root_resolved = Path(root).resolve()
+    candidate_path = Path(candidate)
+    joined = candidate_path if candidate_path.is_absolute() else root_resolved / candidate_path
+    target = joined.resolve()
+    if not target.is_relative_to(root_resolved):
+        raise PathJailError(
+            f"path escapes evidence root: {str(candidate)!r} -> {target} (root: {root_resolved})"
+        )
+    return target
+
+
+def is_allowed_binary(name: str) -> bool:
+    return name in ALLOWED_BINARIES
+
+
+def resolve_binary(name: str, *, which: Callable[[str], str | None] = shutil.which) -> str:
+    """Return the absolute path of an allow-listed binary, or raise.
+
+    The allow-list is checked *first*, so a non-allow-listed name is rejected
+    even when the executable exists on the system.
+    """
+    if not is_allowed_binary(name):
+        raise BinaryNotAllowedError(f"binary not allow-listed: {name!r}")
+    path = which(name)
+    if path is None:
+        raise BinaryNotAllowedError(f"allow-listed binary not found on PATH: {name!r}")
+    return path
