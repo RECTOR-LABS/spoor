@@ -1,0 +1,36 @@
+{
+  "case": "DFIR Madness — Case 001: The Stolen Szechuan Sauce",
+  "provenance": {
+    "source": "https://dfirmadness.com/the-stolen-szechuan-sauce/",
+    "answer_key": "https://dfirmadness.com/answers-to-szechuan-case-001/",
+    "encoded_from": "published narrative answer key",
+    "encoded_on": "2026-06-09",
+    "status": "v0.1 — derived from a research summary of the answer key; VERIFY and expand against the source before a final scored run"
+  },
+  "hosts": [
+    {"name": "DC01", "os": "Windows Server 2012 R2", "ip": "10.42.85.10", "role": "Domain Controller"},
+    {"name": "DESKTOP-SDN1RPT", "os": "Windows 10", "ip": null, "role": "Workstation"}
+  ],
+  "iocs": {
+    "ips": [
+      {"value": "194.61.24.102", "role": "attacker", "context": "external source of the Administrator brute-force against DC01"}
+    ],
+    "files": [
+      {"path": "C:\\Windows\\System32\\coreupdate.exe", "role": "malware", "sha256": null, "context": "downloaded over HTTP at 02:24:06; attacker backdoor / persistence"},
+      {"name": "secret.zip", "role": "exfil_archive", "sha256": null, "context": "exfil staging at ~02:31"},
+      {"name": "loot.zip", "role": "exfil_archive", "sha256": null, "context": "exfil staging at ~02:48"}
+    ]
+  },
+  "timeline": [
+    {"time": "02:24:06", "host": "DC01", "event": "coreupdate.exe downloaded over HTTP", "confidence": "confirmed"},
+    {"time": "~02:31", "host": "DC01", "event": "secret.zip created (exfil staging)", "confidence": "confirmed"},
+    {"time": "~02:48", "host": "DC01", "event": "loot.zip created (exfil staging)", "confidence": "confirmed"}
+  ],
+  "attack_chain": [
+    {"step": 1, "technique": "Brute Force (RDP)", "mitre": "T1110", "detail": "Hydra brute-force of 'Administrator' on DC01 from 194.61.24.102", "source": "answer_key"},
+    {"step": 2, "technique": "Ingress Tool Transfer", "mitre": "T1105", "detail": "coreupdate.exe downloaded over HTTP", "source": "answer_key"},
+    {"step": 3, "technique": "Persistence", "mitre": "T1543", "detail": "coreupdate.exe established as a backdoor (confirm mechanism against evidence)", "source": "spoor_mapping"},
+    {"step": 4, "technique": "Exfiltration", "mitre": "T1041", "detail": "secret.zip and loot.zip staged for exfiltration", "source": "answer_key"}
+  ],
+  "notes": "Date components of timestamps and all file hashes are intentionally null pending verification against the source evidence. MITRE mappings marked source=spoor_mapping are our analysis, not verbatim from the answer key."
+}
