@@ -12,7 +12,7 @@ import json
 from typing import Any
 
 from spoor_sift.audit import AuditLog, AuditRecord
-from spoor_sift.runner import ToolResult, ToolRunner
+from spoor_sift.runner import RawToolResult, ToolResult, ToolRunner
 
 
 class ToolExecutionError(RuntimeError):
@@ -50,6 +50,27 @@ def audited_run(
     complete and the supervisor can see (and self-correct from) a failure.
     """
     result = runner.run(binary, args)
+    record = audit.append(
+        tool=tool, args=audit_args, exit_code=result.exit_code, stdout=result.stdout
+    )
+    if result.exit_code != 0:
+        raise ToolExecutionError(
+            tool, result.exit_code, result.stderr, tool_call_id=record.tool_call_id
+        )
+    return result, record
+
+
+def audited_run_raw(
+    *,
+    runner: ToolRunner,
+    audit: AuditLog,
+    binary: str,
+    args: list[str],
+    tool: str,
+    audit_args: dict,
+) -> tuple[RawToolResult, AuditRecord]:
+    """``audited_run`` for tools whose stdout is bytes (file content, not text)."""
+    result = runner.run_raw(binary, args)
     record = audit.append(
         tool=tool, args=audit_args, exit_code=result.exit_code, stdout=result.stdout
     )
