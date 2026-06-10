@@ -1,0 +1,74 @@
+"""The Lead Investigator: a supervisor routing the case across the specialists.
+
+One graph, four brains: the lead decides which phase comes next (triage →
+IOC/correlation → report), re-routes on failures, and never touches evidence
+itself — specialists own the tools. ``output_mode="full_history"`` keeps every
+specialist's tool outputs (and their tool_call_ids) in the shared transcript,
+which is exactly what the reporter's citation contract feeds on.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph_supervisor import create_supervisor
+
+from spoor_sift.audit import AuditLog
+from spoor_sift.model import build_chat_model
+from spoor_sift.orchestration.agents import (
+    build_ioc_agent,
+    build_reporter_agent,
+    build_triage_agent,
+)
+from spoor_sift.orchestration.state import CaseState
+
+LEAD_INVESTIGATOR_PROMPT = (
+    "You are the Lead Investigator on a DFIR case, supervising three specialists:\n"
+    "- triage: memory-forensics first pass (processes, network, injected code, command lines).\n"
+    "- ioc_correlation: extracts indicators and cross-references them across artifacts.\n"
+    "- reporter: compiles the final incident report under the citation contract.\n"
+    "Sequence the investigation like a senior analyst: triage FIRST, then ioc_correlation "
+    "to consolidate indicators, then the reporter LAST — exactly once, after the evidence "
+    "work is done. Delegate one phase at a time and read what comes back before routing on.\n"
+    "If a specialist reports tool failures or gaps, decide: re-route, send them back with "
+    "sharper instructions, or note the gap as an open question for the report.\n"
+    "Never answer case questions from your own knowledge — every claim must come from a "
+    "specialist's tool-backed work. After the reporter returns the ENFORCED report, summarize "
+    "the case outcome and stop."
+)
+
+
+def build_case_graph(
+    *,
+    runner,
+    audit: AuditLog,
+    evidence_root: Path | str,
+    lead_model=None,
+    triage_model=None,
+    ioc_model=None,
+    reporter_model=None,
+    checkpointer=None,
+):
+    """Assemble the full investigation graph, compiled with a checkpointer.
+
+    Models are injectable per role (scripted fakes in tests, OpenRouter live);
+    the checkpointer (default in-memory) is the prerequisite for resume and the
+    human-approval interrupt gate.
+    """
+    triage = build_triage_agent(
+        runner=runner, audit=audit, evidence_root=evidence_root, model=triage_model
+    )
+    ioc = build_ioc_agent(
+        runner=runner, audit=audit, evidence_root=evidence_root, model=ioc_model
+    )
+    reporter = build_reporter_agent(audit=audit, model=reporter_model)
+
+    workflow = create_supervisor(
+        [triage, ioc, reporter],
+        model=lead_model or build_chat_model("lead"),
+        prompt=LEAD_INVESTIGATOR_PROMPT,
+        state_schema=CaseState,
+        output_mode="full_history",
+    )
+    return workflow.compile(checkpointer=checkpointer or InMemorySaver())

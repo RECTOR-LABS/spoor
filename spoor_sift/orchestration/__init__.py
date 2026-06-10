@@ -4,3 +4,24 @@ A supervisor routes a case to specialists (triage, timeline, IOC, reporter); eac
 reasons over the structured tool output, and the supervisor handles tool failures
 by re-routing/retrying — emergent self-correction, not a fixed pipeline.
 """
+
+from spoor_sift.orchestration.agents import (
+    build_ioc_agent,
+    build_reporter_agent,
+    build_triage_agent,
+)
+from spoor_sift.orchestration.report import build_submit_report_tool, enforce_citation_contract
+from spoor_sift.orchestration.state import CaseState
+from spoor_sift.orchestration.supervisor import build_case_graph
+from spoor_sift.orchestration.tools import build_tools
+
+__all__ = [
+    "CaseState",
+    "build_case_graph",
+    "build_ioc_agent",
+    "build_reporter_agent",
+    "build_submit_report_tool",
+    "build_tools",
+    "build_triage_agent",
+    "enforce_citation_contract",
+]
