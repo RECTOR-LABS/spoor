@@ -33,35 +33,43 @@ def _model_id(role: str) -> str:
     return os.environ.get("SPOOR_MODEL") or DEFAULT_MODEL
 
 
+def _openrouter_key() -> str | None:
+    # Per-project key (RECTOR's convention) first, then the generic name (judges).
+    return os.environ.get("SPOOR_OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+
+
+def _anthropic_key() -> str | None:
+    return os.environ.get("SPOOR_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+
+
 def build_chat_model(role: str = "specialist", *, temperature: float = 0.0):
     """Build a LangChain chat model for ``role`` ('specialist' | 'lead') from env.
 
-    Order of preference: OpenRouter (``OPENROUTER_API_KEY``) → Anthropic
-    (``ANTHROPIC_API_KEY``). Raises if neither is set.
+    Order of preference: OpenRouter (``SPOOR_OPENROUTER_API_KEY`` → ``OPENROUTER_API_KEY``)
+    → Anthropic (``SPOOR_ANTHROPIC_API_KEY`` → ``ANTHROPIC_API_KEY``). Raises if none set.
     """
     model_id = _model_id(role)
 
-    if os.environ.get("OPENROUTER_API_KEY"):
+    openrouter_key = _openrouter_key()
+    if openrouter_key:
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
             model=model_id,
-            api_key=os.environ["OPENROUTER_API_KEY"],
+            api_key=openrouter_key,
             base_url=os.environ.get("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
             temperature=temperature,
         )
 
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    anthropic_key = _anthropic_key()
+    if anthropic_key:
         from langchain_anthropic import ChatAnthropic
 
         native = model_id.split("/", 1)[-1]  # strip "anthropic/" for the native SDK
-        return ChatAnthropic(
-            model=native,
-            api_key=os.environ["ANTHROPIC_API_KEY"],
-            temperature=temperature,
-        )
+        return ChatAnthropic(model=native, api_key=anthropic_key, temperature=temperature)
 
     raise RuntimeError(
-        "No LLM key found. Set OPENROUTER_API_KEY (preferred) or ANTHROPIC_API_KEY "
-        "in your shell, ~/Documents/secret/.env, or ./.env"
+        "No LLM key found. Set SPOOR_OPENROUTER_API_KEY / OPENROUTER_API_KEY (preferred) "
+        "or SPOOR_ANTHROPIC_API_KEY / ANTHROPIC_API_KEY in your shell, "
+        "~/Documents/secret/.env, or ./.env"
     )
