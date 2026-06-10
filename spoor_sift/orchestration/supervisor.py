@@ -34,8 +34,13 @@ LEAD_INVESTIGATOR_PROMPT = (
     "If a specialist reports tool failures or gaps, decide: re-route, send them back with "
     "sharper instructions, or note the gap as an open question for the report.\n"
     "Never answer case questions from your own knowledge — every claim must come from a "
-    "specialist's tool-backed work. After the reporter returns the ENFORCED report, summarize "
-    "the case outcome and stop."
+    "specialist's tool-backed work.\n"
+    "COMPLETION CONTRACT: the case is complete ONLY after the reporter has returned an "
+    "ENFORCED report (a submit_report result with an enforcement summary). You MUST call "
+    "transfer_to_reporter before concluding — concluding without the reporter's enforced "
+    "report is a protocol violation. Do not send any specialist on more than two passes; "
+    "prefer moving the case forward to the reporter over endless re-investigation. After "
+    "the reporter returns, summarize the case outcome and stop."
 )
 
 
