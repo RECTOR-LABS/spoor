@@ -53,3 +53,6 @@ cases/
 # Run artifacts — commit curated sample logs under runs/, ignore local/large ones
 runs/*.local
 runs/**/*.local
+# Workspace outputs inside runs are reproducible tool artifacts (extracted
+# binaries, timeline stores) — never committed; the audit log seals their hashes
+runs/**/workspace/
