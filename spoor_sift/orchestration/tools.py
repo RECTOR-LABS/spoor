@@ -87,12 +87,14 @@ def build_tools(
 
     def rip_fn(hive: str, plugin: str) -> dict:
         return _call(registry.regripper_run, hive=hive, plugin=plugin,
-                     runner=runner, audit=audit, evidence_root=evidence_root)
+                     runner=runner, audit=audit, evidence_root=evidence_root,
+                     workspace_root=workspace_root)
 
     tools.append(StructuredTool.from_function(
         func=rip_fn, name="regripper_run",
-        description="Run a RegRipper plugin against a registry hive (e.g. plugin 'run' "
-                    "for autostart persistence, 'userassist' for execution history).",
+        description="Run a RegRipper plugin against a registry hive — in evidence or "
+                    "extracted into the workspace (e.g. plugin 'run' for autostart "
+                    "persistence, 'userassist' for execution history).",
     ))
 
     def hash_fn(path: str) -> dict:

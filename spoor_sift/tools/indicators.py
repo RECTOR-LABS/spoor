@@ -14,34 +14,9 @@ import json
 from pathlib import Path
 
 from spoor_sift.audit import AuditLog
-from spoor_sift.guardrails import PathJailError, resolve_in_root
+from spoor_sift.guardrails import resolve_in_root, resolve_readable
 from spoor_sift.runner import ToolRunner
 from spoor_sift.tools.base import audited_run
-
-
-def _resolve_readable(
-    path: str | Path,
-    *,
-    evidence_root: Path | str,
-    workspace_root: Path | str | None,
-) -> Path:
-    """Resolve a READ-ONLY target in the evidence root, else the workspace.
-
-    The IOC chain extracts suspect files into the workspace (icat) and then
-    fingerprints/scans them — so read-only targets may live in either jail.
-    """
-    try:
-        return resolve_in_root(evidence_root, path)
-    except PathJailError:
-        if workspace_root is None:
-            raise
-    try:
-        return resolve_in_root(workspace_root, path)
-    except PathJailError:
-        raise PathJailError(
-            f"path escapes both jails: {str(path)!r} is in neither the evidence root "
-            f"({Path(evidence_root).resolve()}) nor the workspace ({Path(workspace_root).resolve()})"
-        ) from None
 
 
 def hash_file(
@@ -52,7 +27,7 @@ def hash_file(
     workspace_root: Path | str | None = None,
 ) -> dict:
     """MD5 + SHA-256 of an evidence file or extracted artifact (in-process, audited)."""
-    target = _resolve_readable(path, evidence_root=evidence_root, workspace_root=workspace_root)
+    target = resolve_readable(path, evidence_root=evidence_root, workspace_root=workspace_root)
     body = target.read_bytes()
     digests = {
         "path": str(target),
@@ -80,7 +55,7 @@ def yara_scan(
 ) -> dict:
     """Scan an evidence file/dir — or an extracted artifact — with workspace rules."""
     rules = resolve_in_root(workspace_root, rules_path)
-    scan_target = _resolve_readable(target, evidence_root=evidence_root, workspace_root=workspace_root)
+    scan_target = resolve_readable(target, evidence_root=evidence_root, workspace_root=workspace_root)
     result, record = audited_run(
         runner=runner,
         audit=audit,

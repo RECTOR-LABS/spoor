@@ -57,6 +57,43 @@ def resolve_in_root(root: Path | str, candidate: str | Path) -> Path:
     return target
 
 
+def resolve_readable(
+    candidate: str | Path,
+    *,
+    evidence_root: Path | str,
+    workspace_root: Path | str | None = None,
+) -> Path:
+    """Resolve a READ-ONLY target in the evidence root, else the workspace.
+
+    Analysis chains extract artifacts into the workspace (icat'd binaries,
+    carved hives) and then read them — so read-only targets may live in either
+    jail. A relative name is looked up where it EXISTS (evidence first); when it
+    exists in neither, the evidence resolution is returned so the tool fails
+    with an honest read error. Writes never use this; they stay workspace-only.
+    """
+    in_evidence: Path | None = None
+    try:
+        in_evidence = resolve_in_root(evidence_root, candidate)
+        if in_evidence.exists():
+            return in_evidence
+    except PathJailError:
+        if workspace_root is None:
+            raise
+    if workspace_root is not None:
+        try:
+            in_workspace = resolve_in_root(workspace_root, candidate)
+            if in_workspace.exists():
+                return in_workspace
+        except PathJailError:
+            pass
+    if in_evidence is not None:
+        return in_evidence
+    raise PathJailError(
+        f"path escapes both jails: {str(candidate)!r} is in neither the evidence root "
+        f"({Path(evidence_root).resolve()}) nor the workspace ({Path(workspace_root).resolve()})"
+    )
+
+
 def ensure_disjoint_roots(evidence_root: Path | str, workspace_root: Path | str) -> None:
     """Assert the writable workspace and the read-only evidence tree don't overlap.
 

@@ -53,6 +53,25 @@ def test_regripper_runs_plugin_against_jailed_hive(deps):
     assert audit.verify().ok
 
 
+def test_regripper_reads_an_extracted_workspace_hive(deps, tmp_path: Path):
+    # Real disk images require extracting the hive first (icat -> workspace);
+    # RegRipper must therefore accept hives from either read-only-treated jail.
+    evidence, audit = deps
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOFTWARE.extracted").write_bytes(b"regf-extracted-hive")
+    runner = FakeRunner(ToolResult(0, RUN_KEY_OUTPUT, ""))
+
+    result = regripper_run(
+        "SOFTWARE.extracted", "run",
+        runner=runner, audit=audit, evidence_root=evidence, workspace_root=workspace,
+    )
+
+    assert "CoreUpdater" in result["text"]
+    _, args = runner.calls[0]
+    assert args[1] == str(workspace / "SOFTWARE.extracted")
+
+
 def test_regripper_rejects_malformed_plugin_names(deps):
     # argv-list execution already makes injection impossible; the name check
     # exists to fail fast with an actionable error instead of a RegRipper stack.
