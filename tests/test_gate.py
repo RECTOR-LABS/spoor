@@ -33,8 +33,10 @@ def deps(tmp_path: Path):
     root = tmp_path / "evidence"
     root.mkdir()
     (root / "mem.raw").write_bytes(b"fake")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
     audit = AuditLog(tmp_path / "audit.jsonl", clock=lambda: "2026-06-10T00:00:00+00:00")
-    return root, audit
+    return root, workspace, audit
 
 
 def _containment_lead():
@@ -58,22 +60,24 @@ def _containment_lead():
     )
 
 
-def _graph(root, audit, lead):
+def _graph(root, workspace, audit, lead):
     silent = lambda: ScriptedChatModel(messages=iter([]))  # noqa: E731
     return build_case_graph(
         runner=FakeRunner(),
         audit=audit,
         evidence_root=root,
+        workspace_root=workspace,
         lead_model=lead,
         triage_model=silent(),
+        timeline_model=silent(),
         ioc_model=silent(),
         reporter_model=silent(),
     )
 
 
 def test_live_tool_pauses_with_a_describing_interrupt(deps):
-    root, audit = deps
-    graph = _graph(root, audit, _containment_lead())
+    root, workspace, audit = deps
+    graph = _graph(root, workspace, audit, _containment_lead())
     config = {"configurable": {"thread_id": "gate-1"}}
 
     result = graph.invoke({"messages": [HumanMessage("Contain DC01.")]}, config)
@@ -88,8 +92,8 @@ def test_live_tool_pauses_with_a_describing_interrupt(deps):
 
 
 def test_approved_action_executes_and_is_audited(deps):
-    root, audit = deps
-    graph = _graph(root, audit, _containment_lead())
+    root, workspace, audit = deps
+    graph = _graph(root, workspace, audit, _containment_lead())
     config = {"configurable": {"thread_id": "gate-2"}}
     graph.invoke({"messages": [HumanMessage("Contain DC01.")]}, config)
 
@@ -105,8 +109,8 @@ def test_approved_action_executes_and_is_audited(deps):
 
 
 def test_rejected_action_refuses_and_is_audited(deps):
-    root, audit = deps
-    graph = _graph(root, audit, _containment_lead())
+    root, workspace, audit = deps
+    graph = _graph(root, workspace, audit, _containment_lead())
     config = {"configurable": {"thread_id": "gate-3"}}
     graph.invoke({"messages": [HumanMessage("Contain DC01.")]}, config)
 

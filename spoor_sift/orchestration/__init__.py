@@ -8,6 +8,7 @@ by re-routing/retrying — emergent self-correction, not a fixed pipeline.
 from spoor_sift.orchestration.agents import (
     build_ioc_agent,
     build_reporter_agent,
+    build_timeline_agent,
     build_triage_agent,
 )
 from spoor_sift.orchestration.gate import build_isolate_host_tool
@@ -23,6 +24,7 @@ __all__ = [
     "build_isolate_host_tool",
     "build_reporter_agent",
     "build_submit_report_tool",
+    "build_timeline_agent",
     "build_tools",
     "build_triage_agent",
     "enforce_citation_contract",

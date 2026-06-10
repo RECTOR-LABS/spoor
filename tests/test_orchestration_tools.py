@@ -43,6 +43,52 @@ def test_build_tools_exposes_memory_tools(deps):
     assert all(t.description for t in tools)
 
 
+def test_build_tools_without_workspace_covers_evidence_only_tools(deps):
+    root, audit = deps
+    tools = build_tools(runner=FakeRunner(ToolResult(0, "[]", "")), audit=audit, evidence_root=root)
+    names = {t.name for t in tools}
+    assert {"tsk_fls", "regripper_run", "hash_file"} <= names
+    # artifact-producing tools need a writable workspace — absent without one
+    assert names.isdisjoint({"tsk_icat", "yara_scan", "log2timeline_run", "psort_query"})
+
+
+def test_build_tools_with_workspace_exposes_the_full_dozen(deps, tmp_path: Path):
+    root, audit = deps
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tools = build_tools(
+        runner=FakeRunner(ToolResult(0, "[]", "")),
+        audit=audit, evidence_root=root, workspace_root=workspace,
+    )
+    names = {t.name for t in tools}
+    assert names == {
+        "vol_pslist", "vol_pstree", "vol_netscan", "vol_malfind", "vol_cmdline",
+        "tsk_fls", "tsk_icat", "regripper_run", "hash_file", "yara_scan",
+        "log2timeline_run", "psort_query",
+    }
+
+
+def test_guardrail_violations_return_error_dicts_for_self_correction(deps, tmp_path: Path):
+    # Bad args (jail escapes, malformed names) must come back as readable data —
+    # the agent reasons and retries; the graph never crashes.
+    root, audit = deps
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tools = {
+        t.name: t
+        for t in build_tools(
+            runner=FakeRunner(ToolResult(0, "[]", "")),
+            audit=audit, evidence_root=root, workspace_root=workspace,
+        )
+    }
+
+    escape = tools["hash_file"].invoke({"path": "../../etc/passwd"})
+    assert "error" in escape and "escape" in escape["error"]
+
+    bad_plugin = tools["regripper_run"].invoke({"hive": "SOFTWARE", "plugin": "run; rm"})
+    assert "error" in bad_plugin and "plugin" in bad_plugin["error"]
+
+
 def test_tool_invocation_delegates_to_audited_core(deps):
     root, audit = deps
     runner = FakeRunner(ToolResult(0, PSLIST_JSON, ""))

@@ -21,22 +21,29 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph_supervisor import create_supervisor
 
 from spoor_sift.audit import AuditLog
+from spoor_sift.guardrails import ensure_disjoint_roots
 from spoor_sift.model import build_chat_model
 from spoor_sift.orchestration.agents import (
     build_ioc_agent,
     build_reporter_agent,
+    build_timeline_agent,
     build_triage_agent,
 )
 from spoor_sift.orchestration.gate import build_isolate_host_tool
 from spoor_sift.orchestration.state import CaseState
 
 LEAD_INVESTIGATOR_PROMPT = (
-    "You are the Lead Investigator on a DFIR case, supervising three specialists:\n"
-    "- triage: memory-forensics first pass (processes, network, injected code, command lines).\n"
-    "- ioc_correlation: extracts indicators and cross-references them across artifacts.\n"
+    "You are the Lead Investigator on a DFIR case, supervising four specialists:\n"
+    "- triage: memory-forensics first pass (processes, network, injected code, command "
+    "lines) plus quick-win disk/registry artifacts (file listing, persistence keys).\n"
+    "- timeline: builds the plaso super-timeline and slices it around the case pivots to "
+    "reconstruct the order of attacker activity.\n"
+    "- ioc_correlation: extracts indicators, runs the extract→hash→scan chain on suspect "
+    "files, and cross-references indicators across artifacts.\n"
     "- reporter: compiles the final incident report under the citation contract.\n"
-    "Sequence the investigation like a senior analyst: triage FIRST, then ioc_correlation "
-    "to consolidate indicators, then the reporter LAST — exactly once, after the evidence "
+    "Sequence the investigation like a senior analyst: triage FIRST; then timeline when "
+    "disk/log evidence is available (skip it for memory-only cases); then ioc_correlation "
+    "to consolidate indicators; then the reporter LAST — exactly once, after the evidence "
     "work is done. Delegate one phase at a time and read what comes back before routing on.\n"
     "If a specialist reports tool failures or gaps, decide: re-route, send them back with "
     "sharper instructions, or note the gap as an open question for the report.\n"
@@ -59,8 +66,10 @@ def build_case_graph(
     runner,
     audit: AuditLog,
     evidence_root: Path | str,
+    workspace_root: Path | str,
     lead_model=None,
     triage_model=None,
+    timeline_model=None,
     ioc_model=None,
     reporter_model=None,
     checkpointer=None,
@@ -69,18 +78,27 @@ def build_case_graph(
 
     Models are injectable per role (scripted fakes in tests, OpenRouter live);
     the checkpointer (default in-memory) is the prerequisite for resume and the
-    human-approval interrupt gate.
+    human-approval interrupt gate. The workspace (tool artifacts) must be
+    disjoint from the read-only evidence tree — enforced here, once, for every
+    agent built on top.
     """
+    ensure_disjoint_roots(evidence_root, workspace_root)
+
     triage = build_triage_agent(
         runner=runner, audit=audit, evidence_root=evidence_root, model=triage_model
     )
+    timeline = build_timeline_agent(
+        runner=runner, audit=audit, evidence_root=evidence_root,
+        workspace_root=workspace_root, model=timeline_model,
+    )
     ioc = build_ioc_agent(
-        runner=runner, audit=audit, evidence_root=evidence_root, model=ioc_model
+        runner=runner, audit=audit, evidence_root=evidence_root,
+        workspace_root=workspace_root, model=ioc_model,
     )
     reporter = build_reporter_agent(audit=audit, model=reporter_model)
 
     workflow = create_supervisor(
-        [triage, ioc, reporter],
+        [triage, timeline, ioc, reporter],
         model=lead_model or build_chat_model("lead"),
         # The lead holds the only live action; it is approval-gated by interrupt().
         tools=[build_isolate_host_tool(audit)],
