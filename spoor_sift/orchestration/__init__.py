@@ -10,6 +10,7 @@ from spoor_sift.orchestration.agents import (
     build_reporter_agent,
     build_triage_agent,
 )
+from spoor_sift.orchestration.gate import build_isolate_host_tool
 from spoor_sift.orchestration.report import build_submit_report_tool, enforce_citation_contract
 from spoor_sift.orchestration.state import CaseState
 from spoor_sift.orchestration.supervisor import build_case_graph
@@ -19,6 +20,7 @@ __all__ = [
     "CaseState",
     "build_case_graph",
     "build_ioc_agent",
+    "build_isolate_host_tool",
     "build_reporter_agent",
     "build_submit_report_tool",
     "build_tools",

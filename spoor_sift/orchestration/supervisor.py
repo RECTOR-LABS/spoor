@@ -5,6 +5,12 @@ IOC/correlation → report), re-routes on failures, and never touches evidence
 itself — specialists own the tools. ``output_mode="full_history"`` keeps every
 specialist's tool outputs (and their tool_call_ids) in the shared transcript,
 which is exactly what the reporter's citation contract feeds on.
+
+Known wart: with a custom ``state_schema``, langgraph 1.2.4 logs
+"Task supervisor ... wrote to unknown channel remaining_steps, ignoring it" —
+the supervisor's react agent emits its internal step counter upward and the
+parent rightly discards it. Benign: step accounting stays correct inside each
+agent; nothing case-related is lost.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from spoor_sift.orchestration.agents import (
     build_reporter_agent,
     build_triage_agent,
 )
+from spoor_sift.orchestration.gate import build_isolate_host_tool
 from spoor_sift.orchestration.state import CaseState
 
 LEAD_INVESTIGATOR_PROMPT = (
@@ -40,7 +47,10 @@ LEAD_INVESTIGATOR_PROMPT = (
     "transfer_to_reporter before concluding — concluding without the reporter's enforced "
     "report is a protocol violation. Do not send any specialist on more than two passes; "
     "prefer moving the case forward to the reporter over endless re-investigation. After "
-    "the reporter returns, summarize the case outcome and stop."
+    "the reporter returns, summarize the case outcome and stop.\n"
+    "CONTAINMENT: you hold one live action, isolate_host — it pauses the case for human "
+    "approval before executing. Use it only when the user explicitly asks for containment "
+    "or an active threat demands it; record the outcome (approved or rejected) in the case."
 )
 
 
@@ -72,6 +82,8 @@ def build_case_graph(
     workflow = create_supervisor(
         [triage, ioc, reporter],
         model=lead_model or build_chat_model("lead"),
+        # The lead holds the only live action; it is approval-gated by interrupt().
+        tools=[build_isolate_host_tool(audit)],
         prompt=LEAD_INVESTIGATOR_PROMPT,
         state_schema=CaseState,
         output_mode="full_history",
