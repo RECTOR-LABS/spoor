@@ -149,3 +149,95 @@ def test_cmdline_normalizes_args(evidence_root: Path, audit: AuditLog):
     assert runner.calls[0][1][-1] == "windows.cmdline"
     entry = out["entries"][0]
     assert entry["pid"] == 666 and "svch0st" in entry["args"]
+
+
+# --- real-scale behaviors (a 2GB image returns thousands of rows) -------------
+
+PSTREE_NESTED_JSON = json.dumps(
+    [
+        {
+            "PID": 4, "PPID": 0, "ImageFileName": "System",
+            "__children": [
+                {
+                    "PID": 372, "PPID": 4, "ImageFileName": "smss.exe",
+                    "__children": [
+                        {"PID": 666, "PPID": 372, "ImageFileName": "svch0st.exe", "__children": []}
+                    ],
+                }
+            ],
+        }
+    ]
+)
+
+
+def test_pstree_flattens_nested_children(evidence_root: Path, audit: AuditLog):
+    # Real windows.pstree nests rows under __children; every process must surface.
+    runner = FakeRunner(ToolResult(0, PSTREE_NESTED_JSON, ""))
+    out = vol_pstree("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+
+    assert out["process_count"] == 3
+    assert {p["pid"] for p in out["processes"]} == {4, 372, 666}
+    nested = next(p for p in out["processes"] if p["pid"] == 666)
+    assert nested["ppid"] == 372
+
+
+def _netscan_rows(n: int, *, state: str = "LISTENING") -> list[dict]:
+    return [
+        {"Proto": "TCPv4", "LocalAddr": "10.0.0.5", "LocalPort": 1000 + i,
+         "ForeignAddr": "0.0.0.0", "ForeignPort": 0, "State": state,
+         "PID": 4, "Owner": "System", "Created": None}
+        for i in range(n)
+    ]
+
+
+def test_netscan_dedupes_pool_scan_duplicates(evidence_root: Path, audit: AuditLog):
+    # Pool scanning surfaces the same socket many times; identical tuples collapse.
+    row = {"Proto": "TCPv4", "LocalAddr": "10.42.85.10", "LocalPort": 62613,
+           "ForeignAddr": "203.78.103.109", "ForeignPort": 443, "State": "ESTABLISHED",
+           "PID": 3644, "Owner": "coreupdater.ex", "Created": None}
+    runner = FakeRunner(ToolResult(0, json.dumps([row, dict(row), dict(row)]), ""))
+
+    out = vol_netscan("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+
+    assert out["connection_count"] == 1
+    assert out["total_scanned"] == 3
+
+
+def test_netscan_caps_rows_server_side(evidence_root: Path, audit: AuditLog):
+    runner = FakeRunner(ToolResult(0, json.dumps(_netscan_rows(500)), ""))
+
+    out = vol_netscan("mem.raw", max_rows=100, runner=runner, audit=audit, evidence_root=evidence_root)
+
+    assert out["connection_count"] == 100
+    assert out["truncated"] is True
+    assert out["total_scanned"] == 500
+
+
+def test_netscan_state_filter_is_applied_server_side(evidence_root: Path, audit: AuditLog):
+    rows = _netscan_rows(50) + [
+        {"Proto": "TCPv4", "LocalAddr": "10.42.85.10", "LocalPort": 62613,
+         "ForeignAddr": "203.78.103.109", "ForeignPort": 443, "State": "ESTABLISHED",
+         "PID": 3644, "Owner": "coreupdater.ex", "Created": None}
+    ]
+    runner = FakeRunner(ToolResult(0, json.dumps(rows), ""))
+
+    out = vol_netscan(
+        "mem.raw", state="ESTABLISHED", runner=runner, audit=audit, evidence_root=evidence_root
+    )
+
+    assert out["connection_count"] == 1
+    assert out["connections"][0]["foreign_addr"] == "203.78.103.109"
+
+
+def test_pslist_caps_rows_server_side(evidence_root: Path, audit: AuditLog):
+    rows = [
+        {"PID": i, "PPID": 0, "ImageFileName": f"p{i}.exe", "__children": []}
+        for i in range(50)
+    ]
+    runner = FakeRunner(ToolResult(0, json.dumps(rows), ""))
+
+    out = vol_pslist("mem.raw", max_rows=10, runner=runner, audit=audit, evidence_root=evidence_root)
+
+    assert out["process_count"] == 10
+    assert out["truncated"] is True
+    assert out["total_scanned"] == 50

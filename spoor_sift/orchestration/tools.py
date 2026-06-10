@@ -27,7 +27,6 @@ from spoor_sift.tools.base import ToolExecutionError, ToolOutputError
 _MEMORY_TOOLS: dict[str, tuple] = {
     "vol_pslist": (memory.vol_pslist, "List processes from a Windows memory image (Volatility 3 windows.pslist)."),
     "vol_pstree": (memory.vol_pstree, "Process tree with parent/child links — spot anomalous parents (windows.pstree)."),
-    "vol_netscan": (memory.vol_netscan, "Network connections/sockets from memory — find C2 (windows.netscan)."),
     "vol_malfind": (memory.vol_malfind, "Injected / hidden executable code regions (windows.malfind)."),
     "vol_cmdline": (memory.vol_cmdline, "Process command-line arguments — inspect launch args (windows.cmdline)."),
 }
@@ -70,6 +69,19 @@ def build_tools(
         _make_memory_tool(core_fn, name, description)
         for name, (core_fn, description) in _MEMORY_TOOLS.items()
     ]
+
+    def netscan_fn(memory_image: str, state: str | None = None, max_rows: int = 300) -> dict:
+        return _call(memory.vol_netscan, memory_image=memory_image, state=state,
+                     max_rows=max_rows, runner=runner, audit=audit,
+                     evidence_root=evidence_root)
+
+    tools.append(StructuredTool.from_function(
+        func=netscan_fn, name="vol_netscan",
+        description="Network connections/sockets from memory — find C2 (windows.netscan). "
+                    "Pool scans surface thousands of stale rows: pass state='ESTABLISHED' "
+                    "to see live connections first; duplicates are collapsed and rows "
+                    "capped server-side.",
+    ))
 
     # ── disk / registry / hashing (evidence only) ──
     def fls_fn(image: str, offset: int | None = None, inode: str | None = None,

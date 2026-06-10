@@ -25,7 +25,11 @@ def _run_vol_plugin(
     audit: AuditLog,
     evidence_root: Path | str,
 ) -> tuple[list[dict], AuditRecord]:
-    """Path-jail the image, run a Volatility plugin (JSON renderer), audit, parse."""
+    """Path-jail the image, run a Volatility plugin (JSON renderer), audit, parse.
+
+    Rows are flattened: real plugin output (notably ``windows.pstree``) nests
+    child processes under ``__children`` — every row must surface.
+    """
     image = resolve_in_root(evidence_root, memory_image)
     args = ["-f", str(image), "-r", "json", plugin]
     result, record = audited_run(
@@ -37,7 +41,26 @@ def _run_vol_plugin(
         audit_args={"memory_image": str(image)},
     )
     rows = parse_json_output(result.stdout, tool=tool, tool_call_id=record.tool_call_id)
-    return rows, record
+    return _flatten(rows), record
+
+
+def _flatten(rows: list[dict]) -> list[dict]:
+    flat: list[dict] = []
+    stack = list(reversed(rows))
+    while stack:
+        row = stack.pop()
+        flat.append(row)
+        stack.extend(reversed(row.get("__children") or []))
+    return flat
+
+
+def _cap(items: list, max_rows: int) -> dict:
+    """Server-side row cap (risk R6): bounded BEFORE output reaches the model."""
+    return {
+        "total_scanned": len(items),
+        "truncated": len(items) > max_rows,
+        "items": items[:max_rows],
+    }
 
 
 def _normalize_process(row: dict) -> dict:
@@ -84,75 +107,117 @@ def _normalize_cmdline(row: dict) -> dict:
     return {"pid": row.get("PID"), "process": row.get("Process"), "args": row.get("Args")}
 
 
-def vol_pslist(memory_image: str, *, runner: ToolRunner, audit: AuditLog, evidence_root: Path | str) -> dict:
+def vol_pslist(
+    memory_image: str, *, max_rows: int = 500,
+    runner: ToolRunner, audit: AuditLog, evidence_root: Path | str,
+) -> dict:
     """List processes from a Windows memory image (Volatility 3 ``windows.pslist``)."""
     rows, record = _run_vol_plugin(
         memory_image, plugin="windows.pslist", tool="vol_pslist",
         runner=runner, audit=audit, evidence_root=evidence_root,
     )
-    processes = [_normalize_process(r) for r in rows]
+    capped = _cap([_normalize_process(r) for r in rows], max_rows)
     return {
         "tool": "vol_pslist",
         "tool_call_id": record.tool_call_id,
-        "process_count": len(processes),
-        "processes": processes,
+        "process_count": len(capped["items"]),
+        "total_scanned": capped["total_scanned"],
+        "truncated": capped["truncated"],
+        "processes": capped["items"],
     }
 
 
-def vol_pstree(memory_image: str, *, runner: ToolRunner, audit: AuditLog, evidence_root: Path | str) -> dict:
+def vol_pstree(
+    memory_image: str, *, max_rows: int = 500,
+    runner: ToolRunner, audit: AuditLog, evidence_root: Path | str,
+) -> dict:
     """Process tree with parent/child links (Volatility 3 ``windows.pstree``)."""
     rows, record = _run_vol_plugin(
         memory_image, plugin="windows.pstree", tool="vol_pstree",
         runner=runner, audit=audit, evidence_root=evidence_root,
     )
-    processes = [_normalize_process(r) for r in rows]
+    capped = _cap([_normalize_process(r) for r in rows], max_rows)
     return {
         "tool": "vol_pstree",
         "tool_call_id": record.tool_call_id,
-        "process_count": len(processes),
-        "processes": processes,
+        "process_count": len(capped["items"]),
+        "total_scanned": capped["total_scanned"],
+        "truncated": capped["truncated"],
+        "processes": capped["items"],
     }
 
 
-def vol_netscan(memory_image: str, *, runner: ToolRunner, audit: AuditLog, evidence_root: Path | str) -> dict:
-    """Network connections/sockets from memory (Volatility 3 ``windows.netscan``)."""
+def vol_netscan(
+    memory_image: str, *, state: str | None = None, max_rows: int = 300,
+    runner: ToolRunner, audit: AuditLog, evidence_root: Path | str,
+) -> dict:
+    """Network connections/sockets from memory (Volatility 3 ``windows.netscan``).
+
+    Pool scanning surfaces the same socket many times and stale sockets by the
+    thousand — duplicates collapse, an optional ``state`` filter (e.g.
+    ESTABLISHED) applies server-side, and rows are capped before output.
+    """
     rows, record = _run_vol_plugin(
         memory_image, plugin="windows.netscan", tool="vol_netscan",
         runner=runner, audit=audit, evidence_root=evidence_root,
     )
-    connections = [_normalize_connection(r) for r in rows]
+    normalized = [_normalize_connection(r) for r in rows]
+    seen: set[tuple] = set()
+    unique: list[dict] = []
+    for conn in normalized:
+        key = (conn["proto"], conn["local_addr"], conn["local_port"],
+               conn["foreign_addr"], conn["foreign_port"], conn["state"], conn["pid"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(conn)
+    if state is not None:
+        unique = [c for c in unique if c["state"] == state]
+    capped = _cap(unique, max_rows)
     return {
         "tool": "vol_netscan",
         "tool_call_id": record.tool_call_id,
-        "connection_count": len(connections),
-        "connections": connections,
+        "connection_count": len(capped["items"]),
+        "total_scanned": len(rows),
+        "truncated": capped["truncated"],
+        "state_filter": state,
+        "connections": capped["items"],
     }
 
 
-def vol_malfind(memory_image: str, *, runner: ToolRunner, audit: AuditLog, evidence_root: Path | str) -> dict:
+def vol_malfind(
+    memory_image: str, *, max_rows: int = 200,
+    runner: ToolRunner, audit: AuditLog, evidence_root: Path | str,
+) -> dict:
     """Injected / hidden code regions (Volatility 3 ``windows.malfind``)."""
     rows, record = _run_vol_plugin(
         memory_image, plugin="windows.malfind", tool="vol_malfind",
         runner=runner, audit=audit, evidence_root=evidence_root,
     )
-    injections = [_normalize_injection(r) for r in rows]
+    capped = _cap([_normalize_injection(r) for r in rows], max_rows)
     return {
         "tool": "vol_malfind",
         "tool_call_id": record.tool_call_id,
-        "injection_count": len(injections),
-        "injections": injections,
+        "injection_count": len(capped["items"]),
+        "total_scanned": capped["total_scanned"],
+        "truncated": capped["truncated"],
+        "injections": capped["items"],
     }
 
 
-def vol_cmdline(memory_image: str, *, runner: ToolRunner, audit: AuditLog, evidence_root: Path | str) -> dict:
+def vol_cmdline(
+    memory_image: str, *, max_rows: int = 500,
+    runner: ToolRunner, audit: AuditLog, evidence_root: Path | str,
+) -> dict:
     """Process command-line arguments (Volatility 3 ``windows.cmdline``)."""
     rows, record = _run_vol_plugin(
         memory_image, plugin="windows.cmdline", tool="vol_cmdline",
         runner=runner, audit=audit, evidence_root=evidence_root,
     )
-    entries = [_normalize_cmdline(r) for r in rows]
+    capped = _cap([_normalize_cmdline(r) for r in rows], max_rows)
     return {
         "tool": "vol_cmdline",
         "tool_call_id": record.tool_call_id,
-        "entries": entries,
+        "total_scanned": capped["total_scanned"],
+        "truncated": capped["truncated"],
+        "entries": capped["items"],
     }
