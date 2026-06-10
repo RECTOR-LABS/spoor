@@ -89,6 +89,19 @@ def test_verify_detects_deleted_record(tmp_path: Path):
     assert result.ok is False
 
 
+def test_records_returns_typed_records_in_order(tmp_path: Path):
+    # Public read API: consumers (e.g. the reporter's citation contract) need the
+    # recorded calls — notably each record's tool_call_id — without touching privates.
+    log = _log_with_three(tmp_path)
+
+    records = log.records()
+    assert [r.seq for r in records] == [0, 1, 2]
+    assert [r.tool for r in records] == ["a", "b", "c"]
+    assert all(len(r.tool_call_id) == 64 for r in records)
+    # round-trip: reading back yields exactly what append computed
+    assert records[1].args == {"k": 1}
+
+
 def test_concurrent_appends_keep_chain_intact(tmp_path: Path):
     # A multi-agent run fires tools in parallel; concurrent appends must not corrupt the chain.
     log = AuditLog(tmp_path / "audit.jsonl")

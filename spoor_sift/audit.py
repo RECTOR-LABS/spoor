@@ -111,6 +111,11 @@ class AuditLog:
                 fh.write(record.to_json() + "\n")
         return record
 
+    def records(self) -> list[AuditRecord]:
+        """All recorded calls, in chain order. The public read API for consumers
+        (e.g. the reporter's citation contract) that need recorded tool_call_ids."""
+        return [AuditRecord(**rec) for rec in self._existing()]
+
     def verify(self) -> VerifyResult:
         """Recompute the chain end to end; report the first break, if any.
 
