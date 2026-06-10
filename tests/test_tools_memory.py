@@ -7,7 +7,13 @@ from spoor_sift.audit import AuditLog
 from spoor_sift.guardrails import PathJailError
 from spoor_sift.runner import ToolResult
 from spoor_sift.tools.base import ToolExecutionError
-from spoor_sift.tools.memory import vol_pslist
+from spoor_sift.tools.memory import (
+    vol_cmdline,
+    vol_malfind,
+    vol_netscan,
+    vol_pslist,
+    vol_pstree,
+)
 
 # A representative slice of Volatility 3 `windows.pslist -r json` output: a flat
 # list of column-keyed rows. Includes a deliberately suspicious `svch0st.exe`.
@@ -99,3 +105,47 @@ def test_pslist_raises_on_failure_but_still_audits(evidence_root: Path, audit: A
     lines = audit.path.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1  # the failed call is still on the record
     assert json.loads(lines[0])["exit_code"] == 1
+
+
+PSTREE_JSON = json.dumps([{"PID": 666, "PPID": 372, "ImageFileName": "svch0st.exe", "__children": []}])
+NETSCAN_JSON = json.dumps(
+    [{"Proto": "TCPv4", "LocalAddr": "10.42.85.10", "LocalPort": 49201, "ForeignAddr": "194.61.24.102",
+      "ForeignPort": 443, "State": "ESTABLISHED", "PID": 666, "Owner": "svch0st.exe", "Created": "2024-01-15T09:14:00+00:00"}]
+)
+MALFIND_JSON = json.dumps(
+    [{"PID": 666, "Process": "svch0st.exe", "Start VPN": "0x1f0000", "Protection": "PAGE_EXECUTE_READWRITE", "Tag": "VadS"}]
+)
+CMDLINE_JSON = json.dumps([{"PID": 666, "Process": "svch0st.exe", "Args": "C:\\Windows\\System32\\svch0st.exe -k netsvcs"}])
+
+
+def test_pstree_uses_pstree_plugin(evidence_root: Path, audit: AuditLog):
+    runner = FakeRunner(ToolResult(0, PSTREE_JSON, ""))
+    out = vol_pstree("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+    assert runner.calls[0][1][-1] == "windows.pstree"
+    assert out["processes"][0]["pid"] == 666
+    assert len(out["tool_call_id"]) == 64
+
+
+def test_netscan_normalizes_connections(evidence_root: Path, audit: AuditLog):
+    runner = FakeRunner(ToolResult(0, NETSCAN_JSON, ""))
+    out = vol_netscan("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+    assert runner.calls[0][1][-1] == "windows.netscan"
+    conn = out["connections"][0]
+    assert conn["foreign_addr"] == "194.61.24.102" and conn["pid"] == 666
+    assert out["connection_count"] == 1
+
+
+def test_malfind_normalizes_injections(evidence_root: Path, audit: AuditLog):
+    runner = FakeRunner(ToolResult(0, MALFIND_JSON, ""))
+    out = vol_malfind("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+    assert runner.calls[0][1][-1] == "windows.malfind"
+    inj = out["injections"][0]
+    assert inj["pid"] == 666 and "EXECUTE" in inj["protection"]
+
+
+def test_cmdline_normalizes_args(evidence_root: Path, audit: AuditLog):
+    runner = FakeRunner(ToolResult(0, CMDLINE_JSON, ""))
+    out = vol_cmdline("mem.raw", runner=runner, audit=audit, evidence_root=evidence_root)
+    assert runner.calls[0][1][-1] == "windows.cmdline"
+    entry = out["entries"][0]
+    assert entry["pid"] == 666 and "svch0st" in entry["args"]
