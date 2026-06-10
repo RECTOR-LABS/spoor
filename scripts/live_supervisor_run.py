@@ -235,7 +235,9 @@ def main() -> int:
     run_dir = REPO / "runs" / f"{stamp:%Y-%m-%d-%H%M%S}-supervisor-live"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    evidence_root = REPO / "evidence" / "case001"
+    # The demo lives in its own evidence dir — never share with real case evidence
+    # (these stubs are rewritten every run and would clobber a real image).
+    evidence_root = REPO / "evidence" / "demo"
     evidence_root.mkdir(parents=True, exist_ok=True)
     (evidence_root / "citadeldc01.mem").write_bytes(b"SPOOR-CANNED-SCENARIO")  # stubs:
     (evidence_root / "disk.dd").write_bytes(b"SPOOR-CANNED-DISK")              # runner is canned
