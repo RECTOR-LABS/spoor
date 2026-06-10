@@ -26,3 +26,21 @@ def test_captures_nonzero_exit_code():
     runner = SubprocessRunner(resolve=lambda name: sys.executable)
     result = runner.run("vol", ["-c", "import sys; sys.exit(3)"])
     assert result.exit_code == 3
+
+
+def test_run_raw_captures_binary_stdout():
+    # icat extracts file CONTENT to stdout — possibly binary that text mode would
+    # corrupt. run_raw returns bytes verbatim; stderr stays text for diagnostics.
+    runner = SubprocessRunner(resolve=lambda name: sys.executable)
+    result = runner.run_raw(
+        "icat", ["-c", "import sys; sys.stdout.buffer.write(bytes([0, 255, 77, 90]))"]
+    )
+    assert result.exit_code == 0
+    assert result.stdout == bytes([0, 255, 77, 90])
+    assert isinstance(result.stderr, str)
+
+
+def test_run_raw_refuses_non_allowlisted_binary():
+    runner = SubprocessRunner()
+    with pytest.raises(BinaryNotAllowedError):
+        runner.run_raw("dd", [])

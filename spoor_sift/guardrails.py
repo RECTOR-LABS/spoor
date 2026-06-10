@@ -57,6 +57,21 @@ def resolve_in_root(root: Path | str, candidate: str | Path) -> Path:
     return target
 
 
+def ensure_disjoint_roots(evidence_root: Path | str, workspace_root: Path | str) -> None:
+    """Assert the writable workspace and the read-only evidence tree don't overlap.
+
+    A workspace nested in the evidence tree would let tool outputs contaminate
+    evidence (and vice versa would jail outputs with the evidence) — both rejected.
+    """
+    evidence = Path(evidence_root).resolve()
+    workspace = Path(workspace_root).resolve()
+    if evidence.is_relative_to(workspace) or workspace.is_relative_to(evidence):
+        raise PathJailError(
+            f"workspace and evidence roots must be disjoint: evidence={evidence} "
+            f"workspace={workspace}"
+        )
+
+
 def is_allowed_binary(name: str) -> bool:
     return name in ALLOWED_BINARIES
 

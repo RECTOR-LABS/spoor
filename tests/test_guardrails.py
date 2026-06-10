@@ -5,6 +5,7 @@ import pytest
 from spoor_sift.guardrails import (
     BinaryNotAllowedError,
     PathJailError,
+    ensure_disjoint_roots,
     is_allowed_binary,
     resolve_binary,
     resolve_in_root,
@@ -61,3 +62,30 @@ def test_rejects_non_allowlisted_binary_even_if_present():
 def test_resolves_allowlisted_binary():
     fake_which = lambda n: "/opt/sift/bin/vol" if n == "vol" else None
     assert resolve_binary("vol", which=fake_which) == "/opt/sift/bin/vol"
+
+
+# --- workspace / evidence separation ----------------------------------------
+
+def test_disjoint_roots_accepted(tmp_path: Path):
+    evidence = tmp_path / "evidence"
+    workspace = tmp_path / "workspace"
+    evidence.mkdir(), workspace.mkdir()
+    ensure_disjoint_roots(evidence, workspace)  # no raise
+
+
+def test_workspace_inside_evidence_rejected(tmp_path: Path):
+    # A writable workspace nested in the read-only evidence tree would let tool
+    # outputs contaminate the evidence — rejected by construction.
+    evidence = tmp_path / "evidence"
+    workspace = evidence / "workspace"
+    workspace.mkdir(parents=True)
+    with pytest.raises(PathJailError):
+        ensure_disjoint_roots(evidence, workspace)
+
+
+def test_evidence_inside_workspace_rejected(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    evidence = workspace / "evidence"
+    evidence.mkdir(parents=True)
+    with pytest.raises(PathJailError):
+        ensure_disjoint_roots(evidence, workspace)

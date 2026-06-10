@@ -22,6 +22,15 @@ class ToolResult:
     stderr: str
 
 
+@dataclass(frozen=True)
+class RawToolResult:
+    """For tools whose stdout is file CONTENT (icat) — bytes, never text-decoded."""
+
+    exit_code: int
+    stdout: bytes
+    stderr: str
+
+
 class ToolRunner(Protocol):
     def run(self, binary: str, args: list[str]) -> ToolResult: ...
 
@@ -48,3 +57,18 @@ class SubprocessRunner:
             check=False,
         )
         return ToolResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+
+    def run_raw(self, binary: str, args: list[str]) -> RawToolResult:
+        """Like ``run`` but stdout stays bytes — for tools that emit file content."""
+        path = self._resolve(binary)  # same allow-list gate
+        proc = subprocess.run(
+            [path, *args],
+            capture_output=True,
+            timeout=self._timeout,
+            check=False,
+        )
+        return RawToolResult(
+            exit_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr.decode("utf-8", errors="replace"),
+        )
