@@ -1,5 +1,6 @@
 import hashlib
 import json
+import threading
 from pathlib import Path
 
 from spoor_sift.audit import AuditLog, GENESIS
@@ -86,3 +87,21 @@ def test_verify_detects_deleted_record(tmp_path: Path):
 
     result = log.verify()
     assert result.ok is False
+
+
+def test_concurrent_appends_keep_chain_intact(tmp_path: Path):
+    # A multi-agent run fires tools in parallel; concurrent appends must not corrupt the chain.
+    log = AuditLog(tmp_path / "audit.jsonl")
+
+    def worker(i: int) -> None:
+        log.append(tool=f"t{i}", args={"i": i}, exit_code=0, stdout=f"out{i}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    result = log.verify()
+    assert result.ok, f"chain broke at seq {result.broken_seq}: {result.reason}"
+    assert sum(1 for _ in open(log.path)) == 20

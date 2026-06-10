@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -76,6 +77,7 @@ class AuditLog:
     def __init__(self, path: Path | str, *, clock: Callable[[], str] = _utc_now_iso):
         self.path = Path(path)
         self._clock = clock
+        self._lock = threading.Lock()
 
     def _existing(self) -> list[dict]:
         if not self.path.exists():
@@ -89,22 +91,24 @@ class AuditLog:
         return records
 
     def append(self, *, tool: str, args: dict, exit_code: int, stdout: str | bytes) -> AuditRecord:
-        existing = self._existing()
-        seq = len(existing)
-        prev_hash = existing[-1]["hash"] if existing else GENESIS
-        content = {
-            "seq": seq,
-            "ts": self._clock(),
-            "tool": tool,
-            "args": args,
-            "exit_code": exit_code,
-            "stdout_sha256": _sha256_hex(stdout),
-            "prev_hash": prev_hash,
-        }
-        record = AuditRecord(**content, hash=_hash_content(content))
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(record.to_json() + "\n")
+        # Serialize concurrent appends (parallel tool calls) so the hash chain stays valid.
+        with self._lock:
+            existing = self._existing()
+            seq = len(existing)
+            prev_hash = existing[-1]["hash"] if existing else GENESIS
+            content = {
+                "seq": seq,
+                "ts": self._clock(),
+                "tool": tool,
+                "args": args,
+                "exit_code": exit_code,
+                "stdout_sha256": _sha256_hex(stdout),
+                "prev_hash": prev_hash,
+            }
+            record = AuditRecord(**content, hash=_hash_content(content))
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(record.to_json() + "\n")
         return record
 
     def verify(self) -> VerifyResult:
