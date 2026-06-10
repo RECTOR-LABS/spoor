@@ -70,3 +70,24 @@ def test_falls_back_to_anthropic_when_only_anthropic_key(monkeypatch):
 def test_raises_when_no_key():
     with pytest.raises(RuntimeError):
         build_chat_model()
+
+
+def test_caps_max_tokens_by_default(monkeypatch):
+    # Providers reserve max_tokens against credit limits per request; an uncapped
+    # model reserves the model maximum (~65K) and can starve a key mid-run.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    model = build_chat_model("specialist")
+    assert model.max_tokens == 16384
+
+
+def test_max_tokens_env_override(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("SPOOR_MAX_TOKENS", "8192")
+    assert build_chat_model("specialist").max_tokens == 8192
+
+
+def test_anthropic_path_also_caps_max_tokens(monkeypatch):
+    # ChatAnthropic's own default is 1024 — far too small for an incident report.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("SPOOR_MODEL", "anthropic/claude-sonnet-4")
+    assert build_chat_model("specialist").max_tokens == 16384

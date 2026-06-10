@@ -14,6 +14,10 @@ import os
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# Providers reserve max_tokens against credit limits per request; uncapped models
+# reserve their maximum (~65K) and can starve a key mid-run. 16K comfortably fits
+# the largest artifact in the system (the full incident report).
+DEFAULT_MAX_TOKENS = 16384
 
 
 def load_env() -> None:
@@ -49,6 +53,7 @@ def build_chat_model(role: str = "specialist", *, temperature: float = 0.0):
     → Anthropic (``SPOOR_ANTHROPIC_API_KEY`` → ``ANTHROPIC_API_KEY``). Raises if none set.
     """
     model_id = _model_id(role)
+    max_tokens = int(os.environ.get("SPOOR_MAX_TOKENS", DEFAULT_MAX_TOKENS))
 
     openrouter_key = _openrouter_key()
     if openrouter_key:
@@ -59,6 +64,7 @@ def build_chat_model(role: str = "specialist", *, temperature: float = 0.0):
             api_key=openrouter_key,
             base_url=os.environ.get("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     anthropic_key = _anthropic_key()
@@ -66,7 +72,10 @@ def build_chat_model(role: str = "specialist", *, temperature: float = 0.0):
         from langchain_anthropic import ChatAnthropic
 
         native = model_id.split("/", 1)[-1]  # strip "anthropic/" for the native SDK
-        return ChatAnthropic(model=native, api_key=anthropic_key, temperature=temperature)
+        return ChatAnthropic(
+            model=native, api_key=anthropic_key, temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     raise RuntimeError(
         "No LLM key found. Set SPOOR_OPENROUTER_API_KEY / OPENROUTER_API_KEY (preferred) "
