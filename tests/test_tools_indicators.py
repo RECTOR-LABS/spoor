@@ -110,3 +110,45 @@ def test_yara_rules_must_live_in_the_workspace(roots):
             runner=FakeRunner(ToolResult(0, "", "")),
             audit=audit, evidence_root=evidence, workspace_root=workspace,
         )
+
+
+def test_yara_can_scan_an_extracted_workspace_artifact(roots):
+    # The IOC chain is extract (icat -> workspace) -> scan; the scan target may
+    # therefore live in EITHER read-only-treated root, not just evidence.
+    evidence, workspace, audit = roots
+    (workspace / "case001.yar").write_text('rule SzechuanBackdoor { strings: $a = "MZ" condition: $a }')
+    extracted = workspace / "coreupdate.exe.extracted"
+    extracted.write_bytes(b"MZ-extracted")
+    runner = FakeRunner(ToolResult(0, f"SzechuanBackdoor {extracted}\n", ""))
+
+    result = yara_scan(
+        "case001.yar", str(extracted),
+        runner=runner, audit=audit, evidence_root=evidence, workspace_root=workspace,
+    )
+
+    assert result["match_count"] == 1
+    assert result["matches"][0]["rule"] == "SzechuanBackdoor"
+
+
+def test_yara_target_outside_both_roots_is_rejected(roots):
+    evidence, workspace, audit = roots
+    (workspace / "r.yar").write_text("rule X { condition: true }")
+    with pytest.raises(PathJailError):
+        yara_scan(
+            "r.yar", "/etc/passwd",
+            runner=FakeRunner(ToolResult(0, "", "")),
+            audit=audit, evidence_root=evidence, workspace_root=workspace,
+        )
+
+
+def test_hash_file_can_fingerprint_a_workspace_artifact(roots):
+    evidence, workspace, audit = roots
+    extracted = workspace / "coreupdate.exe.extracted"
+    extracted.write_bytes(b"MZ-extracted")
+
+    result = hash_file(
+        str(extracted), audit=audit, evidence_root=evidence, workspace_root=workspace
+    )
+
+    assert result["sha256"] == hashlib.sha256(b"MZ-extracted").hexdigest()
+    assert audit.records()[-1].tool == "hash_file"

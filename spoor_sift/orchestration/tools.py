@@ -97,12 +97,12 @@ def build_tools(
 
     def hash_fn(path: str) -> dict:
         return _call(indicators.hash_file, path=path, audit=audit,
-                     evidence_root=evidence_root)
+                     evidence_root=evidence_root, workspace_root=workspace_root)
 
     tools.append(StructuredTool.from_function(
         func=hash_fn, name="hash_file",
-        description="MD5 + SHA-256 of an evidence file (computed in-process, audited) — "
-                    "fingerprint suspected binaries for IOC lists.",
+        description="MD5 + SHA-256 of an evidence file or extracted artifact (computed "
+                    "in-process, audited) — fingerprint suspected binaries for IOC lists.",
     ))
 
     if workspace_root is None:
@@ -127,8 +127,9 @@ def build_tools(
 
     tools.append(StructuredTool.from_function(
         func=yara_fn, name="yara_scan",
-        description="Scan an evidence file/dir with YARA rules from the workspace; "
-                    "returns matching rule names per path.",
+        description="Scan an evidence file/dir — or an artifact extracted into the "
+                    "workspace (e.g. tsk_icat's extracted_to path) — with YARA rules "
+                    "from the workspace; returns matching rule names per path.",
     ))
 
     def l2t_fn(source: str, plaso_name: str) -> dict:
