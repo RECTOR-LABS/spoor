@@ -54,3 +54,8 @@ def test_build_server_from_env_requires_evidence_root(monkeypatch):
     monkeypatch.delenv("EVIDENCE_ROOT", raising=False)
     with pytest.raises(RuntimeError):
         build_server_from_env()
+
+
+async def test_server_registers_all_memory_tools(server):
+    names = {t.name for t in await server.list_tools()}
+    assert {"vol_pslist", "vol_pstree", "vol_netscan", "vol_malfind", "vol_cmdline"} <= names

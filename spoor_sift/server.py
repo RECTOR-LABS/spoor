@@ -14,12 +14,39 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
 
 from spoor_sift.audit import AuditLog
 from spoor_sift.runner import SubprocessRunner, ToolRunner
 from spoor_sift.tools import memory
+
+# Memory-forensics tools: name -> (core function, MCP description for tool selection).
+_MEMORY_TOOLS: dict[str, tuple[Callable, str]] = {
+    "vol_pslist": (memory.vol_pslist, "List processes from a Windows memory image (Volatility 3 windows.pslist)."),
+    "vol_pstree": (memory.vol_pstree, "Process tree with parent/child links — spot anomalous parents (windows.pstree)."),
+    "vol_netscan": (memory.vol_netscan, "Network connections/sockets from memory — find C2 (windows.netscan)."),
+    "vol_malfind": (memory.vol_malfind, "Injected / hidden executable code regions (windows.malfind)."),
+    "vol_cmdline": (memory.vol_cmdline, "Process command-line arguments — inspect launch args (windows.cmdline)."),
+}
+
+
+def _register_memory_tool(
+    mcp: FastMCP,
+    name: str,
+    core_fn: Callable,
+    description: str,
+    runner: ToolRunner,
+    audit: AuditLog,
+    evidence_root: Path,
+) -> None:
+    # A dedicated function per tool keeps the closure binding correct in the loop.
+    @mcp.tool(name=name, description=description)
+    async def _tool(memory_image: str) -> dict:
+        return await asyncio.to_thread(
+            core_fn, memory_image, runner=runner, audit=audit, evidence_root=evidence_root
+        )
 
 
 def build_server(
@@ -31,23 +58,8 @@ def build_server(
     """Build the MCP server with its dependencies injected (testable + embeddable)."""
     evidence_root = Path(evidence_root)
     mcp = FastMCP("spoor-sift")
-
-    @mcp.tool()
-    async def vol_pslist(memory_image: str) -> dict:
-        """List processes from a Windows memory image (Volatility 3 windows.pslist).
-
-        Args:
-            memory_image: Path to the memory capture, within the read-only
-                evidence root. Paths outside the root are rejected.
-        """
-        return await asyncio.to_thread(
-            memory.vol_pslist,
-            memory_image,
-            runner=runner,
-            audit=audit,
-            evidence_root=evidence_root,
-        )
-
+    for name, (core_fn, description) in _MEMORY_TOOLS.items():
+        _register_memory_tool(mcp, name, core_fn, description, runner, audit, evidence_root)
     return mcp
 
 
