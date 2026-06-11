@@ -146,12 +146,16 @@ def build_ioc_agent(
     )
 
 
-def build_reporter_agent(*, audit: AuditLog, model=None):
-    """Build the reporter: no evidence tools, one exit — the enforcing submit_report."""
+def build_reporter_agent(*, audit: AuditLog, model=None, report_path: Path | str | None = None):
+    """Build the reporter: no evidence tools, one exit — the enforcing submit_report.
+
+    ``report_path`` (optional) makes submit_report persist the enforced report to
+    disk at production time, so the deliverable survives an unclean graph exit.
+    """
     model = model or build_chat_model("specialist")
     return create_react_agent(
         model,
-        [build_submit_report_tool(audit)],
+        [build_submit_report_tool(audit, report_path=report_path)],
         prompt=REPORTER_PROMPT,
         name="reporter",
         state_schema=CaseState,

@@ -10,6 +10,7 @@ guardrails.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Annotated, Literal
 
 from langchain_core.messages import ToolMessage
@@ -91,8 +92,14 @@ class IocIn(BaseModel):
     )
 
 
-def build_submit_report_tool(audit: AuditLog) -> BaseTool:
-    """The reporter's only exit: enforce the contract, update state, seal the report."""
+def build_submit_report_tool(audit: AuditLog, *, report_path: Path | str | None = None) -> BaseTool:
+    """The reporter's only exit: enforce the contract, update state, seal the report.
+
+    If ``report_path`` is given, the enforced report is also written there the
+    instant it is produced — so the case's deliverable survives even if the graph
+    later fails to finish (e.g. the supervisor's wrap-up call erroring out). The
+    report is the whole point of the run; it must not depend on a clean exit.
+    """
 
     @tool("submit_report")
     def submit_report(
@@ -130,6 +137,11 @@ def build_submit_report_tool(audit: AuditLog) -> BaseTool:
             stdout=json.dumps(enforced, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
         )
         enforced["report_audit_id"] = sealed.tool_call_id
+
+        if report_path is not None:
+            path = Path(report_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(enforced, indent=2, ensure_ascii=False), encoding="utf-8")
 
         return Command(
             update={

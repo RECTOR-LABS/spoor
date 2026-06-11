@@ -190,6 +190,7 @@ def main() -> int:
     print(f"  {pre_hash}")
 
     audit = AuditLog(run_dir / "audit.jsonl")
+    report_file = run_dir / "report.json"
     runner = SubprocessRunner(timeout=900.0)
     specialist = build_chat_model("specialist")
     lead = build_chat_model("lead")
@@ -203,6 +204,10 @@ def main() -> int:
         timeline_model=specialist,
         ioc_model=specialist,
         reporter_model=specialist,
+        # Durability: the reporter writes the enforced report here the instant it
+        # is produced, so a late failure (e.g. the supervisor epilogue erroring)
+        # cannot discard a report that was already generated.
+        report_path=report_file,
     )
 
     thread_id = f"case001-real-{stamp:%Y%m%dT%H%M%SZ}"
@@ -223,30 +228,49 @@ def main() -> int:
     print(f"lead model: {getattr(lead, 'model_name', getattr(lead, 'model', '?'))}")
     print(f"specialist model: {getattr(specialist, 'model_name', getattr(specialist, 'model', '?'))}\n")
 
-    def _stream(inputs) -> dict | None:
-        state = None
-        for mode, chunk in graph.stream(inputs, config, stream_mode=["updates", "values"]):
-            if mode == "updates":
-                for node, update in chunk.items():
-                    messages = (update or {}).get("messages", [])
-                    last = messages[-1] if messages else None
-                    calls = [c["name"] for c in (getattr(last, "tool_calls", None) or [])]
-                    if calls:
-                        print(f"▶ {node}  → {', '.join(calls)}", flush=True)
-                    else:
-                        head = (getattr(last, "content", "") or "")[:110]
-                        print(f"▶ {node}  {head!r}", flush=True)
-            else:
-                state = chunk
-        return state
+    def _stream(inputs) -> tuple[dict | None, Exception | None]:
+        # Resilient: an API/graph failure mid-stream preserves the last good state
+        # (and the reporter has already persisted report.json by then), so a crash
+        # in the supervisor's epilogue never costs us a report that was produced.
+        state, error = None, None
+        try:
+            for mode, chunk in graph.stream(inputs, config, stream_mode=["updates", "values"]):
+                if mode == "updates":
+                    for node, update in chunk.items():
+                        messages = (update or {}).get("messages", [])
+                        last = messages[-1] if messages else None
+                        calls = [c["name"] for c in (getattr(last, "tool_calls", None) or [])]
+                        if calls:
+                            print(f"▶ {node}  → {', '.join(calls)}", flush=True)
+                        else:
+                            head = (getattr(last, "content", "") or "")[:110]
+                            print(f"▶ {node}  {head!r}", flush=True)
+                else:
+                    state = chunk
+        except Exception as exc:  # noqa: BLE001 — we want ANY failure to preserve state
+            error = exc
+            print(f"\n⚠ stream interrupted: {type(exc).__name__}: {str(exc)[:200]}", flush=True)
+        return state, error
 
-    final_state = _stream({"messages": [HumanMessage(brief)], "evidence": {"memory_image": "citadeldc01.mem"}})
+    def _report_so_far(state) -> dict | None:
+        # Prefer live state; fall back to the durably-written report file (the
+        # reporter writes it at production time, independent of a clean exit).
+        if state and state.get("report"):
+            return state["report"]
+        if report_file.exists():
+            print("↩ recovered the enforced report from disk (graph did not exit cleanly)", flush=True)
+            return json.loads(report_file.read_text())
+        return None
+
+    final_state, last_error = _stream(
+        {"messages": [HumanMessage(brief)], "evidence": {"memory_image": "citadeldc01.mem"}}
+    )
 
     gate_engagements = 0
-    while (not final_state or not final_state.get("report")) and gate_engagements < 2:
+    while _report_so_far(final_state) is None and gate_engagements < 2:
         gate_engagements += 1
         print(f"\n⛔ completeness gate: no enforced report — re-engaging supervisor (attempt {gate_engagements})", flush=True)
-        final_state = _stream(
+        final_state, last_error = _stream(
             {"messages": [HumanMessage(
                 "PROTOCOL VIOLATION: the case ended without the reporter's enforced report. "
                 "Transfer to the reporter NOW so it can compile and submit the report via "
@@ -258,7 +282,7 @@ def main() -> int:
     post_hash = _sha256_file(IMAGE)
     print(f"  {post_hash}")
 
-    report = (final_state or {}).get("report")
+    report = _report_so_far(final_state)
     chain = audit.verify()
     messages = (final_state or {}).get("messages", [])
     tokens = _summarize_tokens(messages)
@@ -270,6 +294,8 @@ def main() -> int:
         "specialist_model": getattr(specialist, "model_name", getattr(specialist, "model", None)),
         "message_count": len(messages),
         "completeness_gate_engagements": gate_engagements,
+        "recovered_report_from_disk": bool(report) and not (final_state or {}).get("report"),
+        "last_error": f"{type(last_error).__name__}: {last_error}"[:300] if last_error else None,
         "audit_records": len(audit.records()),
         "audit_chain_ok": chain.ok,
         "evidence_sha256_pre": pre_hash,
@@ -285,7 +311,8 @@ def main() -> int:
         print(f"\nFAILED: no enforced report after {gate_engagements} gate engagement(s); "
               f"see {run_dir.relative_to(REPO)}/transcript.md", file=sys.stderr)
         return 1
-    (run_dir / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
+    # report.json is already on disk (written by submit_report); rewrite pretty for consistency.
+    report_file.write_text(json.dumps(report, indent=2, ensure_ascii=False))
 
     findings, unscored = _findings_from_iocs(report, audit)
     (run_dir / "findings.json").write_text(json.dumps({"findings": findings}, indent=2))

@@ -172,3 +172,44 @@ def test_submit_report_tool_enforces_and_updates_state(tmp_path: Path):
     assert sealed.tool == "submit_report"
     assert report["report_audit_id"] == sealed.tool_call_id
     assert audit.verify().ok
+
+
+def test_submit_report_persists_enforced_report_to_disk(tmp_path: Path):
+    # Durability: the report is the case's whole deliverable. It must hit disk the
+    # instant it is produced, so a later graph/API failure (e.g. the supervisor's
+    # epilogue 403'ing) can never discard a report that was already generated.
+    audit, call_a, _ = _audit_with_two_calls(tmp_path)
+    report_path = tmp_path / "out" / "report.json"
+    tool = build_submit_report_tool(audit, report_path=report_path)
+
+    tool.invoke(
+        {
+            "type": "tool_call",
+            "id": "call_reporter_1",
+            "name": "submit_report",
+            "args": {
+                "executive_summary": "Host compromised.",
+                "findings": [{"claim": "svch0st.exe running", "status": "confirmed", "tool_call_id": call_a}],
+                "iocs": [{"type": "process", "value": "svch0st.exe", "tool_call_id": call_a}],
+                "open_questions": [],
+            },
+        }
+    )
+
+    assert report_path.exists()  # written even though the graph never "finished"
+    on_disk = json.loads(report_path.read_text())
+    assert on_disk["enforcement"]["confirmed"] == 1
+    assert on_disk["report_audit_id"] == audit.records()[-1].tool_call_id
+
+
+def test_submit_report_without_path_still_works(tmp_path: Path):
+    # report_path is optional — the in-memory/state path is unchanged without it.
+    audit, call_a, _ = _audit_with_two_calls(tmp_path)
+    tool = build_submit_report_tool(audit)
+    command = tool.invoke(
+        {
+            "type": "tool_call", "id": "c1", "name": "submit_report",
+            "args": {"executive_summary": "x", "findings": [], "iocs": [], "open_questions": []},
+        }
+    )
+    assert command.update["report"]["enforcement"]["confirmed"] == 0

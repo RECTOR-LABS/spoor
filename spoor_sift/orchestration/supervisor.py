@@ -73,6 +73,7 @@ def build_case_graph(
     ioc_model=None,
     reporter_model=None,
     checkpointer=None,
+    report_path: Path | str | None = None,
 ):
     """Assemble the full investigation graph, compiled with a checkpointer.
 
@@ -80,7 +81,8 @@ def build_case_graph(
     the checkpointer (default in-memory) is the prerequisite for resume and the
     human-approval interrupt gate. The workspace (tool artifacts) must be
     disjoint from the read-only evidence tree — enforced here, once, for every
-    agent built on top.
+    agent built on top. ``report_path`` makes the reporter persist its enforced
+    report to disk at production time (durability against an unclean exit).
     """
     ensure_disjoint_roots(evidence_root, workspace_root)
 
@@ -95,7 +97,7 @@ def build_case_graph(
         runner=runner, audit=audit, evidence_root=evidence_root,
         workspace_root=workspace_root, model=ioc_model,
     )
-    reporter = build_reporter_agent(audit=audit, model=reporter_model)
+    reporter = build_reporter_agent(audit=audit, model=reporter_model, report_path=report_path)
 
     workflow = create_supervisor(
         [triage, timeline, ioc, reporter],

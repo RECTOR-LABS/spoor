@@ -267,6 +267,7 @@ def main() -> int:
         timeline_model=specialist,
         ioc_model=specialist,
         reporter_model=specialist,
+        report_path=run_dir / "report.json",  # durable: persisted at production time
     )
 
     thread_id = f"case001-live-{stamp:%Y%m%dT%H%M%SZ}"
