@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +27,7 @@ sys.path.insert(0, str(REPO))
 
 from langchain_core.messages import HumanMessage
 
-from spoor_sift.accuracy import score
+from spoor_sift.accuracy import findings_from_report, score
 from spoor_sift.audit import AuditLog
 from spoor_sift.model import build_chat_model, load_env
 from spoor_sift.orchestration.supervisor import build_case_graph
@@ -37,9 +36,6 @@ from spoor_sift.runner import SubprocessRunner
 EVIDENCE_ROOT = REPO / "evidence" / "case001"
 IMAGE = EVIDENCE_ROOT / "citadeldc01.mem"
 GROUND_TRUTH = REPO / "datasets" / "case001_ground_truth_dc01_memory.json"
-
-_FILE_TOKEN = re.compile(r"^[\w.\-\\/:$ ]+$")
-
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -79,36 +75,6 @@ def _transcript(messages) -> str:
             lines.append("```\n" + content[:2000] + ("\n… [truncated]" if len(content) > 2000 else "") + "\n```")
         lines.append("")
     return "\n".join(lines)
-
-
-def _findings_from_iocs(report: dict, audit: AuditLog) -> tuple[list[dict], list[dict]]:
-    """Deterministically map report IOCs to gradeable findings.
-
-    Scoring contract: an IOC is a CONFIRMED finding iff it cites a tool_call_id
-    that exists in the verified audit chain — the same standard the reporter is
-    held to. ip → ip (port stripped); path/process → file when the value is a
-    clean file token. Everything else is reported as unscored, not dropped
-    silently.
-    """
-    chain_ok = audit.verify().ok
-    known = {r.tool_call_id for r in audit.records()} if chain_ok else set()
-
-    findings: list[dict] = []
-    unscored: list[dict] = []
-    for ioc in report.get("iocs", []):
-        cited = ioc.get("tool_call_id")
-        status = "confirmed" if cited in known else "inferred"
-        value = str(ioc.get("value", "")).strip()
-        kind = ioc.get("type")
-        if kind == "ip":
-            ip = value.split(":")[0].strip()
-            findings.append({"category": "ip", "value": ip, "status": status, "tool_call_id": cited})
-        elif kind in ("path", "process") and _FILE_TOKEN.match(value):
-            token = value.split()[0] if kind == "process" else value
-            findings.append({"category": "file", "value": token, "status": status, "tool_call_id": cited})
-        else:
-            unscored.append(ioc)
-    return findings, unscored
 
 
 def _accuracy_markdown(*, result, findings, unscored, ground_truth: dict,
@@ -314,7 +280,8 @@ def main() -> int:
     # report.json is already on disk (written by submit_report); rewrite pretty for consistency.
     report_file.write_text(json.dumps(report, indent=2, ensure_ascii=False))
 
-    findings, unscored = _findings_from_iocs(report, audit)
+    known_ids = {r.tool_call_id for r in audit.records()} if chain.ok else set()
+    findings, unscored = findings_from_report(report, known_ids)
     (run_dir / "findings.json").write_text(json.dumps({"findings": findings}, indent=2))
     ground_truth = json.loads(GROUND_TRUTH.read_text())
     result = score(findings, ground_truth)

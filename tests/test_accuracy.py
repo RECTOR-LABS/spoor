@@ -63,3 +63,15 @@ def test_inferred_findings_are_not_false_positives():
     r = score(findings, GT)
     assert r.precision == 1.0
     assert r.false_positives == []
+
+
+def test_truncated_windows_process_name_matches_full_basename():
+    """Windows pslist truncates the EPROCESS ImageFileName to ~14 chars, so a
+    real malware process surfaces as 'coreupdater.ex' while the answer key holds
+    the full 'coreupdater.exe'. The scorer must still credit the detection."""
+    gt = {"iocs": {"files": [{"path": "C:\\Windows\\System32\\coreupdater.exe", "role": "malware"}]}}
+    findings = [_confirmed("file", "coreupdater.ex")]  # 14-char ImageFileName truncation
+    r = score(findings, gt)
+    assert r.recall == 1.0
+    assert r.false_negatives == []
+    assert any(f["value"] == "coreupdater.ex" for f in r.true_positives)
