@@ -34,7 +34,7 @@ git clone https://github.com/RECTOR-LABS/spoor && cd spoor
 make install                       # deps incl. Volatility 3 (the 'forensics' extra)
 cp .env.example .env               # add SPOOR_OPENROUTER_API_KEY (or OPENROUTER_API_KEY)
 
-make test                          # 103 tests
+make test                          # 112 tests
 make demo                          # full multi-agent live run (canned Case-001 demo scenario)
 make verify-audit                  # prove the run's hash chain is intact
 ```
@@ -133,7 +133,7 @@ spoor_sift/
 scripts/                live demo run · real-evidence run
 datasets/               Case 001 docs, fetch instructions, verified ground truth
 runs/                   committed run artifacts: audit logs, reports, tokens, transcripts
-tests/                  103 tests, TDD-first (incl. guardrail bypass attempts)
+tests/                  112 tests, TDD-first (incl. guardrail bypass attempts)
 ```
 
 ## Honest limitations
