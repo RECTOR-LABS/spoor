@@ -85,6 +85,37 @@ def cmd_accuracy_report(findings_path: str, ground_truth_path: str) -> int:
     return 0
 
 
+def render_report(report: dict) -> str:
+    """Render a run's report.json for a terminal demo: summary, confirmed
+    findings (each audit-cited), and indicators. Inferred claims are omitted
+    from the confirmed section — the same confirmed-vs-inferred contract score()
+    enforces."""
+    lines: list[str] = []
+    summary = str(report.get("executive_summary", "")).strip()
+    if summary:
+        lines += ["EXECUTIVE SUMMARY", summary, ""]
+    findings = report.get("findings", [])
+    confirmed = [f for f in findings if f.get("status") == "confirmed"]
+    lines.append(f"CONFIRMED FINDINGS — {len(confirmed)}/{len(findings)} (each cites a verified tool_call_id)")
+    for f in confirmed[:6]:
+        claim = " ".join(str(f.get("claim", "")).split())
+        lines.append(f"  [+] {claim[:140]}")
+    iocs = report.get("iocs", [])
+    if iocs:
+        lines += ["", f"INDICATORS — {len(iocs)}"]
+        for i in iocs[:8]:
+            lines.append(f"  - [{i.get('type')}] {' '.join(str(i.get('value', '')).split())[:90]}")
+    return "\n".join(lines)
+
+
+def cmd_show_report(run_dir: str) -> int:
+    path = Path(run_dir)
+    report_path = path if path.suffix == ".json" else path / "report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    print(render_report(report))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spoor", description="Spoor DFIR agent — trust toolbelt")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -98,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     p_acc.add_argument("findings_path")
     p_acc.add_argument("ground_truth_path")
 
+    p_show = sub.add_parser("show-report", help="render a run's report.json for a demo")
+    p_show.add_argument("run_dir", help="a runs/<stamp>/ dir or a report.json path")
+
     args = parser.parse_args(argv)
     if args.command == "verify-audit":
         return cmd_verify_audit(args.audit_path)
@@ -105,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_demo_guardrails()
     if args.command == "accuracy-report":
         return cmd_accuracy_report(args.findings_path, args.ground_truth_path)
+    if args.command == "show-report":
+        return cmd_show_report(args.run_dir)
     return 2
 
 
