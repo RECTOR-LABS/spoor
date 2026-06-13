@@ -43,6 +43,17 @@ make verify-audit                  # prove the run's hash chain is intact
 citation contract, a rigged tool failure the agent must recover from — against a
 canned, Case-001-shaped evidence layer (no big downloads needed).
 
+### Watch it (silent walkthrough)
+
+```bash
+./scripts/demo_walkthrough.sh          # $0 — runs off the committed real run
+```
+
+Prints the full submission story beat-by-beat: the verdict (`spoor show-report`),
+the tamper-evident audit (`spoor verify-audit`), guardrail-bypass attempts that
+fail (`spoor demo-guardrails`), and the honest accuracy number. The live
+autonomous run is `make real`.
+
 ## The real run (real evidence, real accuracy)
 
 Spoor is scored against **DFIR Madness Case 001 — "The Stolen Szechuan Sauce"**, a
