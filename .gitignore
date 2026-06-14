@@ -56,3 +56,6 @@ runs/**/*.local
 # Workspace outputs inside runs are reproducible tool artifacts (extracted
 # binaries, timeline stores) — never committed; the audit log seals their hashes
 runs/**/workspace/
+
+# Brainstorm tooling (visual companion) — local only, never published
+.superpowers/
