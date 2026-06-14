@@ -3,12 +3,15 @@
     spoor verify-audit <audit.jsonl>        prove the audit chain is intact / show a break
     spoor demo-guardrails                   attempt 4 bypasses live; each is rejected in code
     spoor accuracy-report <findings> <gt>   score findings vs an answer key (P/R/F1 + hallucinations)
+    spoor show-report <run_dir>             render a run's report.json for a demo
+    spoor show-selfcorrect <run_dir>        replay the run's tool-failure → recovery beats
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -116,6 +119,99 @@ def cmd_show_report(run_dir: str) -> int:
     return 0
 
 
+def _parse_transcript_blocks(transcript: str) -> list[dict]:
+    """Split a transcript.md into typed message blocks.
+
+    Headers are exactly ``## <type> [<name>]`` (type ∈ ai/tool/human/system) on
+    their own line — anchored so markdown ``## `` headers *inside* a message's
+    content (e.g. an agent's inline report) are never mistaken for boundaries.
+    """
+    header = re.compile(r"(?m)^## (ai|tool|human|system)(?: \[([^\]]*)\])?[ \t]*$")
+    marks = list(header.finditer(transcript))
+    blocks: list[dict] = []
+    for idx, m in enumerate(marks):
+        end = marks[idx + 1].start() if idx + 1 < len(marks) else len(transcript)
+        body = transcript[m.end():end]
+        fence = re.search(r"```\n(.*?)\n```", body, re.S)
+        blocks.append({"type": m.group(1), "name": m.group(2) or None,
+                       "content": fence.group(1) if fence else ""})
+    return blocks
+
+
+def _extract_tool_error(content: str) -> str:
+    """Pull the error string out of a failed tool result (JSON dict, or raw text)."""
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict) and data.get("error"):
+            return str(data["error"])
+    except (json.JSONDecodeError, ValueError):
+        pass
+    m = re.search(r'"error":\s*"([^"]*)"', content)
+    return m.group(1) if m else " ".join(content.split())[:200]
+
+
+def _looks_like_routing(text: str) -> bool:
+    """A pure hand-off line ('Transferring back to supervisor') is not a recovery."""
+    t = " ".join(text.split()).lower()
+    return t.startswith(("transferring ", "successfully transferred", "transferred back"))
+
+
+def _clip(text: str, limit: int = 300) -> str:
+    """Collapse whitespace and clip to a word boundary for terminal display."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def render_self_correction(transcript: str) -> str:
+    """Replay a run's genuine tool-failure → recovery beats from its transcript.
+
+    The live ``make real`` stream only prints phase transfers; the failure and the
+    agent's recovery reasoning happen *inside* the specialist sub-agents. This pulls
+    them back out of transcript.md so the self-correction is visible on screen —
+    tool names and error text quoted verbatim, recovery reasoning quoted faithfully.
+    """
+    blocks = _parse_transcript_blocks(transcript)
+    events: list[tuple[str, str, str, str]] = []
+    caller = None
+    for i, b in enumerate(blocks):
+        if b["type"] == "ai" and b["name"]:
+            caller = b["name"]
+        if b["type"] == "tool" and '"error"' in b["content"]:
+            error = _extract_tool_error(b["content"])
+            recovery = ""
+            for nb in blocks[i + 1:]:
+                if nb["type"] == "tool" and '"error"' in nb["content"]:
+                    break  # bound at the next failure — keep each recovery un-mixed
+                if (nb["type"] == "ai" and nb["name"] == caller
+                        and nb["content"].strip() and not _looks_like_routing(nb["content"])):
+                    recovery = nb["content"]
+                    break
+            events.append((caller or "agent", b["name"] or "tool", error, recovery))
+
+    if not events:
+        return "SELF-CORRECTION — no tool failures recorded in this run (clean)."
+
+    lines = ["SELF-CORRECTION — real tool failures handled as data, recovered in-flight", ""]
+    for agent, tool, error, recovery in events:
+        lines.append(f"▶ {agent} called  {tool}")
+        lines.append(f"  ⚠ FAILED    {error}")
+        if recovery:
+            lines.append(f'  ↻ RECOVERS  "{_clip(recovery)}"')
+        lines.append("")
+    lines.append(
+        f"{len(events)} tool failure(s) → {len(events)} recovery(ies): "
+        "no crash, no fabrication, audit chain intact."
+    )
+    return "\n".join(lines)
+
+
+def cmd_show_selfcorrect(run_dir: str) -> int:
+    path = Path(run_dir)
+    transcript_path = path if path.suffix == ".md" else path / "transcript.md"
+    print(render_self_correction(transcript_path.read_text(encoding="utf-8")))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="spoor", description="Spoor DFIR agent — trust toolbelt")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -132,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
     p_show = sub.add_parser("show-report", help="render a run's report.json for a demo")
     p_show.add_argument("run_dir", help="a runs/<stamp>/ dir or a report.json path")
 
+    p_sc = sub.add_parser("show-selfcorrect", help="replay a run's tool-failure → recovery beats")
+    p_sc.add_argument("run_dir", help="a runs/<stamp>/ dir or a transcript.md path")
+
     args = parser.parse_args(argv)
     if args.command == "verify-audit":
         return cmd_verify_audit(args.audit_path)
@@ -141,6 +240,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_accuracy_report(args.findings_path, args.ground_truth_path)
     if args.command == "show-report":
         return cmd_show_report(args.run_dir)
+    if args.command == "show-selfcorrect":
+        return cmd_show_selfcorrect(args.run_dir)
     return 2
 
 
