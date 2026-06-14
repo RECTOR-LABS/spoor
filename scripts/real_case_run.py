@@ -181,13 +181,14 @@ def main() -> int:
     brief = (
         "REAL EVIDENCE CASE. Investigate host DC01 (10.42.85.10), a Windows Server 2012 R2 "
         "domain controller suspected of compromise. Available evidence: the memory image "
-        "'citadeldc01.mem' (2.1GB RAM capture). This is a MEMORY-ONLY case — there is no disk "
-        "image, registry hive file, or timeline source in evidence, so do not attempt disk or "
-        "timeline phases. Determine whether the host is compromised, the intrusion vector if "
-        "visible, what malicious code is running, command-and-control endpoints, and indicators "
-        "of compromise — strictly from what the memory shows. Be precise about process names "
-        "exactly as the evidence reports them. Work the case to completion and deliver the "
-        "final report through the reporter."
+        "'citadeldc01.mem' (2.1GB RAM capture). Run a COMPLETE, senior-analyst investigation: "
+        "triage the memory first, then reconstruct a TIMELINE of the intrusion to order the "
+        "attacker's activity (process creation, persistence, the command-and-control connection, "
+        "any file staging or deletion), then consolidate the indicators. Do not skip the timeline "
+        "phase. Determine whether the host is compromised, the intrusion vector if visible, what "
+        "malicious code is running, command-and-control endpoints, and indicators of compromise. "
+        "Be precise about process names exactly as the evidence reports them. Work the case to "
+        "completion and deliver the final report through the reporter."
     )
 
     print(f"thread: {thread_id}")

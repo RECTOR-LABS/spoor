@@ -6,12 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-RUN_DIR="${1:-runs/2026-06-12-231634-case001-real}"
+RUN_DIR="${1:-runs/2026-06-12-231634-case001-real}"          # canonical run: verdict/audit/accuracy
+SC_RUN="${2:-runs/2026-06-14-155749-case001-real}"           # run exhibiting the induced self-correction
 GT="datasets/case001_ground_truth_dc01_memory.json"
 UV="${UV:-uv}"
 BAR="════════════════════════════════════════════════════════════════════"
 
-banner() { printf '\n%s\n  %s\n%s\n\n' "$BAR" "$1" "$BAR"; }
+banner() { clear; printf '\n%s\n  %s\n%s\n\n' "$BAR" "$1" "$BAR"; }
 pause()  { printf '  [ press enter ▸ ] '; read -r _ || true; printf '\n'; }
 runcmd() { printf '  $ %s\n\n' "$*"; "$@"; }
 
@@ -34,7 +35,11 @@ fi
 pause
 
 banner "② AUTONOMOUS RUN — one prompt; a multi-agent graph works the case.  [ splice live 'make real' clip here ]"
-printf "  Recorded separately: 'make real' prints 'hashing evidence… <sha256>',\n  'lead/specialist: sonnet', then streams '▶ supervisor → triage' … (Ctrl-C after).\n"
+printf "  Recorded separately: 'make real' prints 'hashing evidence… <sha256>',\n  'lead/specialist: sonnet', then streams '▶ supervisor → triage → timeline → ioc → reporter'.\n"
+pause
+
+banner "②b SELF-CORRECTION — forensic tools fail mid-case; Spoor reasons and recovers (no crash, no fabrication)."
+runcmd "$UV" run spoor show-selfcorrect "$SC_RUN"
 pause
 
 banner "③ THE VERDICT — real evil found, every claim tied to evidence."
