@@ -1,0 +1,44 @@
+import raw from "@/data/case001.json";
+import type { AuditRecord } from "@/lib/verifyAudit";
+
+export interface Finding {
+  claim: string;
+  status: "confirmed" | "inferred";
+  tool_call_id: string | null;
+  evidence_excerpt: string | null;
+}
+export interface Ioc { type: string; value: string; tool_call_id: string | null }
+
+export const site = raw as unknown as {
+  meta: Record<string, string | number | boolean>;
+  audit: AuditRecord[];
+  verdict: {
+    executive_summary: string;
+    findings: Finding[];
+    iocs: Ioc[];
+    open_questions: string[];
+    enforcement: { audit_chain_ok: boolean; confirmed: number; inferred: number; downgraded: number };
+    report_audit_id: string;
+  };
+  accuracy: {
+    precision: number; recall: number; f1: number; hallucination_rate: number;
+    confirmed_total: string; ground_truth_items: number;
+    pre_correction: { precision: number; recall: number; f1: number };
+    true_positives: { category: string; value: string }[];
+    false_positives: { category: string; value: string }[];
+    false_negatives: { category: string; value: string }[];
+    unscored: { type: string; value: string }[];
+    framing: string;
+  };
+};
+
+/** Map a record hash → the human labels of findings that cite it (for the inspector). */
+export function citationsByRecord(): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const f of site.verdict.findings) {
+    if (f.status === "confirmed" && f.tool_call_id) {
+      (map[f.tool_call_id] ??= []).push(f.claim);
+    }
+  }
+  return map;
+}
