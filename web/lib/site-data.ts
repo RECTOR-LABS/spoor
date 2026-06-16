@@ -8,6 +8,8 @@ export interface Finding {
   evidence_excerpt: string | null;
 }
 export interface Ioc { type: string; value: string; tool_call_id: string | null }
+/** A scored accuracy item — the engine's gradeable finding shape (matches scorer output). */
+export interface ScoredFinding { category: string; value: string; status: "confirmed" | "inferred"; tool_call_id: string | null }
 
 export const site = raw as unknown as {
   meta: {
@@ -39,10 +41,10 @@ export const site = raw as unknown as {
     precision: number; recall: number; f1: number; hallucination_rate: number;
     confirmed_total: string; ground_truth_items: number;
     pre_correction: { precision: number; recall: number; f1: number };
-    true_positives: { category: string; value: string }[];
-    false_positives: { category: string; value: string }[];
+    true_positives: ScoredFinding[];
+    false_positives: ScoredFinding[];
     false_negatives: { category: string; value: string }[];
-    unscored: { type: string; value: string }[];
+    unscored: Ioc[];
     framing: string;
   };
 };
@@ -57,3 +59,6 @@ export function citationsByRecord(): Record<string, string[]> {
   }
   return map;
 }
+
+/** Citations are derived once at module load — the underlying data is static JSON. */
+export const citations = citationsByRecord();
