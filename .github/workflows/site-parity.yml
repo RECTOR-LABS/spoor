@@ -58,6 +58,10 @@ jobs:
       - name: Node — unit tests and build gate
         run: |
           cd web
-          npm ci
+          # npm install (not ci): Tailwind v4's native engine (@tailwindcss/oxide)
+          # pulls platform-specific optional deps (the @emnapi wasm fallback) that a
+          # macOS-generated lockfile can't fully satisfy under strict `npm ci` on
+          # Linux. install reconciles them; the honesty gates below are unaffected.
+          npm install --no-audit --no-fund
           npm test
           npm run build
