@@ -1,13 +1,21 @@
 name: site-parity
 
 on:
-  pull_request:
-    paths:
+  # The honesty gate (export → chain verify → drift → build) must guard `main`
+  # directly, not only the PRs that target it — a direct push to main must re-run
+  # it too. Both events share one path list (YAML anchor) so they can't drift apart.
+  push:
+    branches: [main]
+    paths: &parity_paths
       - "web/**"
       - "runs/**"
       - "scripts/export_site_data.py"
       - "spoor_sift/accuracy.py"
       - "spoor_sift/audit.py"
+      - "pyproject.toml"
+      - "uv.lock"
+  pull_request:
+    paths: *parity_paths
 
 jobs:
   parity:
