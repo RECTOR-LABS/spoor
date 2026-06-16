@@ -1,3 +1,4 @@
+import { ArrowDown } from "lucide-react";
 import { site } from "@/lib/site-data";
 
 export function Hero() {
@@ -9,8 +10,8 @@ export function Hero() {
         An AI agent investigated a real compromised domain controller ({site.meta.host}) and reached a
         verdict. Don&apos;t trust it — recompute its evidence chain yourself, right here in your browser.
       </p>
-      <a href="#verify" className="mt-8 inline-block rounded-md border border-emerald-700 px-5 py-2.5 font-mono text-emerald-400 hover:bg-emerald-950/40">
-        Verify it yourself ↓
+      <a href="#verify" className="mt-8 inline-flex items-center gap-1.5 rounded-md border border-emerald-700 px-5 py-2.5 font-mono text-emerald-400 hover:bg-emerald-950/40">
+        Verify it yourself <ArrowDown className="h-4 w-4" aria-hidden />
       </a>
     </section>
   );

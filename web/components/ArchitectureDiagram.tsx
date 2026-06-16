@@ -203,7 +203,7 @@ export function ArchitectureDiagram() {
       {/* CITATION CONTRACT */}
       <rect x="178" y="406" width="316" height="44" rx="4" fill="#0d1117" stroke="#d29922" strokeWidth="1.5" />
       <text x="336" y="420" textAnchor="middle" fontSize="8" fill="#d29922" fontWeight="700">CITATION CONTRACT (enforced in code — submit_report)</text>
-      <text x="336" y="433" textAnchor="middle" fontSize="7.5" fill="#8b949e">"confirmed" must cite a valid tool_call_id · uncited claims downgraded</text>
+      <text x="336" y="433" textAnchor="middle" fontSize="7.5" fill="#8b949e">&quot;confirmed&quot; must cite a valid tool_call_id · uncited claims downgraded</text>
       <text x="336" y="444" textAnchor="middle" fontSize="7.5" fill="#8b949e">broken chain → nothing confirmable · report hash sealed on chain</text>
 
       {/* ── reporter agent ── */}
