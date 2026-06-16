@@ -13,8 +13,8 @@ export function AccuracySection() {
   const a = site.accuracy;
   const f = (n: number, d = 2) => n.toFixed(d);
   return (
-    <section className="mx-auto max-w-3xl px-6 py-16">
-      <h2 className="text-2xl font-semibold text-neutral-100">Accuracy, measured honestly</h2>
+    <section className="mx-auto max-w-3xl px-6 py-16" aria-labelledby="accuracy-heading">
+      <h2 id="accuracy-heading" className="text-2xl font-semibold text-neutral-100">Accuracy, measured honestly</h2>
       <p className="mt-2 text-neutral-400">
         Scored against the verified answer key for Case 001. We report the unflattering number and exactly why.
       </p>

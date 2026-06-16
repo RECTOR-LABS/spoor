@@ -4,6 +4,8 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Not a circular ref: next/font injects --font-sans / --font-mono on <html> at runtime;
+   @theme inline re-exposes them as Tailwind utilities (font-sans, font-mono). */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

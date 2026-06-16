@@ -65,15 +65,15 @@ export function VerifiableAudit({ audit, citations }: VerifiableAuditProps) {
     <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-5 font-mono text-sm text-neutral-200">
       <ChainStrip records={working} brokenSeq={result?.ok ? undefined : result?.brokenSeq} selected={selected} onSelect={setSelected} />
       <div className="mt-4 flex flex-wrap gap-2">
-        <button onClick={() => runVerify(working)} disabled={verifying}
+        <button type="button" onClick={() => runVerify(working)} disabled={verifying}
           className="rounded-md border border-emerald-700 px-3 py-1.5 text-emerald-400 hover:bg-emerald-950/40">
           Verify chain
         </button>
-        <button onClick={() => tamperByte(selected)}
+        <button type="button" onClick={() => tamperByte(selected)}
           className="rounded-md border border-amber-700 px-3 py-1.5 text-amber-400 hover:bg-amber-950/40">
           Tamper a byte
         </button>
-        <button onClick={reset} disabled={!tampered}
+        <button type="button" onClick={reset} disabled={!tampered}
           className="rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-300 hover:bg-neutral-900 disabled:opacity-40">
           Reset
         </button>

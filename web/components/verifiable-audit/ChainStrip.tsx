@@ -16,8 +16,10 @@ export function ChainStrip({
         return (
           <span key={r.seq} className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => onSelect(r.seq)}
-              aria-current={selected === r.seq}
+              aria-current={selected === r.seq ? "step" : undefined}
+              aria-label={`record ${r.seq}: ${r.tool}`}
               title={`seq ${r.seq} · ${r.tool}`}
               className={`h-7 w-7 rounded-full border ${color} ${selected === r.seq ? "ring-2 ring-sky-500" : ""}`}
             >

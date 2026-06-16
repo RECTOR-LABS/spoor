@@ -11,8 +11,8 @@ const PILLARS = [
 
 export function TrustStack() {
   return (
-    <section className="mx-auto max-w-3xl px-6 py-16">
-      <h2 className="text-2xl font-semibold text-neutral-100">The trust stack</h2>
+    <section className="mx-auto max-w-3xl px-6 py-16" aria-labelledby="trust-stack-heading">
+      <h2 id="trust-stack-heading" className="text-2xl font-semibold text-neutral-100">The trust stack</h2>
       <p className="mt-2 text-neutral-400">Five pillars. Each one ships with the command that proves it.</p>
       <div className="mb-6 overflow-x-auto">
         <ArchitectureDiagram />

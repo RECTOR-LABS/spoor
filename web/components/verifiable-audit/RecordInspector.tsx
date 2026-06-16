@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AlertTriangle, Link2, X, ChevronDown, ChevronRight } from "lucide-react";
 import type { AuditRecord } from "@/lib/verifyAudit";
 
 const FIELDS: (keyof AuditRecord)[] = ["seq", "tool", "ts", "exit_code", "stdout_sha256", "prev_hash", "hash"];
@@ -20,8 +21,11 @@ export function RecordInspector({
 
   return (
     <div className="mt-4">
-      <button onClick={() => setOpen((v) => !v)} className="text-sky-400 hover:underline">
-        {open ? "▾" : "▸"} open the full inspector — all {records.length} records, click any field to edit it
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-sky-400 hover:underline">
+        {open
+          ? <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+          : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+        open the full inspector — all {records.length} records, click any field to edit it
       </button>
       {open && (
         <div className="mt-3 grid gap-3 md:grid-cols-[210px_1fr]">
@@ -31,13 +35,17 @@ export function RecordInspector({
               return (
                 <li key={r.seq}>
                   <button
+                    type="button"
                     onClick={() => onSelect(r.seq)}
+                    aria-current={selected === r.seq ? "step" : undefined}
                     className={`flex w-full justify-between rounded-md border px-2 py-1 ${
                       selected === r.seq ? "border-sky-600" : "border-neutral-800"
                     } ${broken ? "text-red-400" : "text-neutral-300"}`}
                   >
                     <span>seq{r.seq} {r.tool}</span>
-                    <span>{broken ? "✗" : "⛓"}</span>
+                    {broken
+                      ? <X className="h-3.5 w-3.5 shrink-0" aria-label="broken" />
+                      : <Link2 className="h-3.5 w-3.5 shrink-0" aria-label="intact" />}
                   </button>
                 </li>
               );
@@ -50,6 +58,8 @@ export function RecordInspector({
                 <span
                   contentEditable={f !== "seq"}
                   suppressContentEditableWarning
+                  role={f !== "seq" ? "textbox" : undefined}
+                  aria-label={f}
                   onBlur={(e) => onEdit(rec.seq, f, e.currentTarget.textContent ?? "")}
                   className="break-all text-neutral-200 outline-none focus:bg-neutral-900"
                 >
@@ -62,8 +72,8 @@ export function RecordInspector({
                 A finding&apos;s tool_call_id IS this hash. Findings citing it: {cites.join("; ")}
               </p>
             )}
-            <button onClick={() => onTamper(rec.seq)} className="mt-2 text-amber-400 hover:underline">
-              ⚠ flip a byte in this record
+            <button type="button" onClick={() => onTamper(rec.seq)} className="mt-2 flex items-center gap-1 text-amber-400 hover:underline">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> flip a byte in this record
             </button>
           </div>
         </div>
