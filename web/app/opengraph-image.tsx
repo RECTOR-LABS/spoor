@@ -34,7 +34,7 @@ export default function Image() {
             marginTop: 24,
           }}
         >
-          ✓ verify the chain yourself · ✗ tamper and watch it break
+          verify the chain yourself  →  tamper and watch it break
         </div>
       </div>
     ),
