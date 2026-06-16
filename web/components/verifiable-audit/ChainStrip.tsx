@@ -1,4 +1,4 @@
-import type { AuditRecord } from "@/lib/verifyAudit";
+import { isBrokenAt, type AuditRecord } from "@/lib/verifyAudit";
 
 export function ChainStrip({
   records, brokenSeq, selected, onSelect,
@@ -11,7 +11,7 @@ export function ChainStrip({
   return (
     <div className="flex flex-wrap items-center gap-1" aria-label="audit chain">
       {records.map((r, i) => {
-        const broken = brokenSeq !== undefined && i >= brokenSeq;
+        const broken = isBrokenAt(brokenSeq, i);
         const color = broken ? "border-red-600 text-red-400" : "border-emerald-700 text-emerald-400";
         return (
           <span key={r.seq} className="flex items-center gap-1">

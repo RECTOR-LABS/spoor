@@ -28,8 +28,12 @@ export function VerifiableAudit({ audit, citations }: VerifiableAuditProps) {
   }, []);
 
   useEffect(() => {
+    // Recompute the real chain in-browser on mount — Web Crypto is client-only, so it
+    // can't run during render. runVerify updates loading/result state asynchronously
+    // (after the SHA-256 await), which is the intended one-time mount synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runVerify(working);
-    // run once on mount
+    // run once on mount; `working` is deliberately excluded so this fires only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -40,6 +44,9 @@ export function VerifiableAudit({ audit, citations }: VerifiableAuditProps) {
     void runVerify(next);
   };
 
+  // `seq` doubles as the array index: the exported chain is always 0-indexed and
+  // contiguous (verifyChain enforces seq===index), and `seq` is non-editable in the
+  // inspector — so recs[seq] is always the record the visitor selected.
   const tamperByte = (seq: number) =>
     apply((recs) => {
       const r = recs[seq];
@@ -60,10 +67,12 @@ export function VerifiableAudit({ audit, citations }: VerifiableAuditProps) {
   };
 
   const tampered = JSON.stringify(working) !== JSON.stringify(audit);
+  // A passing result has no broken record; otherwise surface the first break to both views.
+  const brokenSeq = result?.ok ? undefined : result?.brokenSeq;
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-5 font-mono text-sm text-neutral-200">
-      <ChainStrip records={working} brokenSeq={result?.ok ? undefined : result?.brokenSeq} selected={selected} onSelect={setSelected} />
+      <ChainStrip records={working} brokenSeq={brokenSeq} selected={selected} onSelect={setSelected} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={() => runVerify(working)} disabled={verifying}
           className="rounded-md border border-emerald-700 px-3 py-1.5 text-emerald-400 hover:bg-emerald-950/40">
@@ -81,7 +90,7 @@ export function VerifiableAudit({ audit, citations }: VerifiableAuditProps) {
       <ResultBanner result={result} verifying={verifying} />
       <RecordInspector
         records={working} selected={selected} onSelect={setSelected}
-        citations={citations} brokenSeq={result?.ok ? undefined : result?.brokenSeq}
+        citations={citations} brokenSeq={brokenSeq}
         onEdit={editField} onTamper={tamperByte}
       />
     </div>

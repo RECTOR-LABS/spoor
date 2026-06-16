@@ -21,6 +21,11 @@ export interface VerifyResult {
   reason?: string;
 }
 
+/** The single source of truth for "is the record at array index `i` shown broken?":
+ *  once verification fails at `brokenSeq`, that record and everything after it is broken. */
+export const isBrokenAt = (brokenSeq: number | undefined, i: number): boolean =>
+  brokenSeq !== undefined && i >= brokenSeq;
+
 /** SHA-256 over the canonical content fields (everything but `hash`). */
 export async function recordHash(rec: AuditRecord): Promise<string> {
   const content: { [k: string]: Json } = {};
