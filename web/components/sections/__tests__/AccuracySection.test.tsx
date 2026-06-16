@@ -10,5 +10,7 @@ describe("<AccuracySection>", () => {
     expect(screen.getByText(/0\.50/)).toBeInTheDocument(); // recall
     expect(screen.getByText(/0\.000/)).toBeInTheDocument(); // hallucination
     expect(screen.getByText(/INTACT/i)).toBeInTheDocument();
+    expect(screen.getByText("F1")).toBeInTheDocument();
+    expect(screen.getAllByText(/0\.33/).length).toBeGreaterThan(0); // F1 (also pre-correction precision)
   });
 });

@@ -10,7 +10,22 @@ export interface Finding {
 export interface Ioc { type: string; value: string; tool_call_id: string | null }
 
 export const site = raw as unknown as {
-  meta: Record<string, string | number | boolean>;
+  meta: {
+    case: string;
+    run_id: string;
+    host: string;
+    captured: string;
+    lead_model: string;
+    specialist_model: string;
+    started_utc: string;
+    finished_utc: string;
+    audit_records: number;
+    audit_chain_ok: boolean;
+    evidence_sha256_pre: string;
+    evidence_sha256_post: string;
+    evidence_integrity_ok: boolean;
+    scenario: string;
+  };
   audit: AuditRecord[];
   verdict: {
     executive_summary: string;
