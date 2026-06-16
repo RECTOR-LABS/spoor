@@ -1,4 +1,5 @@
 import { Fingerprint, ShieldCheck, Link2, Gauge, RotateCcw } from "lucide-react";
+import { ArchitectureDiagram } from "@/components/ArchitectureDiagram";
 
 const PILLARS = [
   { icon: Fingerprint, title: "Tamper-evident audit", body: "Every tool call is a hash-chained record; every finding cites one.", cmd: "spoor verify-audit <run>/audit.jsonl" },
@@ -13,6 +14,9 @@ export function TrustStack() {
     <section className="mx-auto max-w-3xl px-6 py-16">
       <h2 className="text-2xl font-semibold text-neutral-100">The trust stack</h2>
       <p className="mt-2 text-neutral-400">Five pillars. Each one ships with the command that proves it.</p>
+      <div className="mb-6 overflow-x-auto">
+        <ArchitectureDiagram />
+      </div>
       <ul className="mt-6 space-y-3">
         {PILLARS.map((p) => (
           <li key={p.title} className="rounded-lg border border-neutral-800 p-4">
