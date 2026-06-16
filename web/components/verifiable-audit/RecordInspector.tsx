@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, Link2, X, ChevronDown, ChevronRight } from "lucide-react";
-import type { AuditRecord } from "@/lib/verifyAudit";
+import { isBrokenAt, type AuditRecord } from "@/lib/verifyAudit";
 
 const FIELDS: (keyof AuditRecord)[] = ["seq", "tool", "args", "ts", "exit_code", "stdout_sha256", "prev_hash", "hash"];
 
@@ -31,7 +31,7 @@ export function RecordInspector({
         <div className="mt-3 grid gap-3 md:grid-cols-[210px_1fr]">
           <ul className="space-y-1">
             {records.map((r, i) => {
-              const broken = brokenSeq !== undefined && i >= brokenSeq;
+              const broken = isBrokenAt(brokenSeq, i);
               return (
                 <li key={r.seq}>
                   <button
@@ -52,21 +52,34 @@ export function RecordInspector({
             })}
           </ul>
           <div className="space-y-1">
-            {FIELDS.map((f) => (
-              <div key={f} className="flex gap-2">
-                <span className="w-28 shrink-0 text-neutral-500">{f}</span>
-                <span
-                  contentEditable={f !== "seq" && f !== "args"}
-                  suppressContentEditableWarning
-                  role={f !== "seq" && f !== "args" ? "textbox" : undefined}
-                  aria-label={f}
-                  onBlur={(e) => onEdit(rec.seq, f, e.currentTarget.textContent ?? "")}
-                  className="break-all text-neutral-200 outline-none focus:bg-neutral-900"
-                >
-                  {f === "args" ? JSON.stringify(rec.args) : String(rec[f])}
-                </span>
-              </div>
-            ))}
+            {FIELDS.map((f) => {
+              // `seq` (the array anchor) and `args` (a nested object, not a flat string)
+              // are read-only; the rest are free-editable to let a visitor tamper at will.
+              const isEditable = f !== "seq" && f !== "args";
+              const shown = f === "args" ? JSON.stringify(rec.args) : String(rec[f]);
+              return (
+                <div key={f} className="flex gap-2">
+                  <span className="w-28 shrink-0 text-neutral-500">{f}</span>
+                  <span
+                    contentEditable={isEditable}
+                    suppressContentEditableWarning
+                    role={isEditable ? "textbox" : undefined}
+                    aria-label={f}
+                    onBlur={(e) => {
+                      // Only commit real edits to editable fields: skip non-editable
+                      // spans (never corrupt the `args` object into a string) and skip
+                      // no-op blurs so tabbing through doesn't re-hash the whole chain.
+                      if (!isEditable) return;
+                      const next = e.currentTarget.textContent ?? "";
+                      if (next !== shown) onEdit(rec.seq, f, next);
+                    }}
+                    className="break-all text-neutral-200 outline-none focus:bg-neutral-900"
+                  >
+                    {shown}
+                  </span>
+                </div>
+              );
+            })}
             {cites.length > 0 && (
               <p className="mt-2 rounded-md border border-dashed border-emerald-800 p-2 text-xs text-emerald-400">
                 A finding&apos;s tool_call_id IS this hash. Findings citing it: {cites.join("; ")}
