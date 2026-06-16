@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Link2, X, ChevronDown, ChevronRight } from "lucide-react";
 import type { AuditRecord } from "@/lib/verifyAudit";
 
-const FIELDS: (keyof AuditRecord)[] = ["seq", "tool", "ts", "exit_code", "stdout_sha256", "prev_hash", "hash"];
+const FIELDS: (keyof AuditRecord)[] = ["seq", "tool", "args", "ts", "exit_code", "stdout_sha256", "prev_hash", "hash"];
 
 export function RecordInspector({
   records, selected, onSelect, citations, brokenSeq, onEdit, onTamper,
@@ -56,14 +56,14 @@ export function RecordInspector({
               <div key={f} className="flex gap-2">
                 <span className="w-28 shrink-0 text-neutral-500">{f}</span>
                 <span
-                  contentEditable={f !== "seq"}
+                  contentEditable={f !== "seq" && f !== "args"}
                   suppressContentEditableWarning
-                  role={f !== "seq" ? "textbox" : undefined}
+                  role={f !== "seq" && f !== "args" ? "textbox" : undefined}
                   aria-label={f}
                   onBlur={(e) => onEdit(rec.seq, f, e.currentTarget.textContent ?? "")}
                   className="break-all text-neutral-200 outline-none focus:bg-neutral-900"
                 >
-                  {String(rec[f])}
+                  {f === "args" ? JSON.stringify(rec.args) : String(rec[f])}
                 </span>
               </div>
             ))}
