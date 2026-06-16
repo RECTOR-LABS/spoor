@@ -8,6 +8,8 @@ Built for the SANS **"FIND EVIL!"** hackathon (Devpost, 2026). Python · MCP · 
 
 *Spoor*: the track or scent trail an animal leaves — you follow the spoor to hunt the quarry. Here: follow forensic artifacts to the threat.
 
+**Live proof-site → [spoor.rectorspace.com](https://spoor.rectorspace.com)** — recompute Spoor's real SHA-256 audit chain in your browser, then tamper a byte and watch the verdict break. No trust required.
+
 <p align="center"><img src="assets/architecture.svg" alt="Spoor architecture with security boundaries" width="920"/></p>
 
 ## Why trust it? (the part that's different)
